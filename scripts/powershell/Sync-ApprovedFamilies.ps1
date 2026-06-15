@@ -79,6 +79,33 @@ function Get-SelectProp($props, $name) {
     try { $props.$name.select.name } catch { "" }
 }
 
+# ── Helper: write Audited File Location back to a Notion page ─────────────────
+
+function Set-AuditedLocation($pageId, $filePath) {
+    $body = @{
+        properties = @{
+            "Audited File Location" = @{
+                rich_text = @(
+                    @{ type = "text"; text = @{ content = $filePath } }
+                )
+            }
+        }
+    }
+    $bodyJson = $body | ConvertTo-Json -Depth 8
+    $req = [System.Net.WebRequest]::Create("https://api.notion.com/v1/pages/$pageId")
+    $req.Method      = "PATCH"
+    $req.ContentType = "application/json"
+    $req.Headers.Add("Authorization",  "Bearer $NotionToken")
+    $req.Headers.Add("Notion-Version", "2022-06-28")
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($bodyJson)
+    $req.ContentLength = $bytes.Length
+    $stream = $req.GetRequestStream()
+    $stream.Write($bytes, 0, $bytes.Length)
+    $stream.Close()
+    $res = $req.GetResponse()
+    $res.Close()
+}
+
 # ── Query Notion database (paginated) ────────────────────────────────────────
 
 Write-Host ""
@@ -137,11 +164,13 @@ Write-Host ""
 
 # ── Process each entry ───────────────────────────────────────────────────────
 
-$copied   = 0
-$upToDate = 0
-$notFound = 0
-$noData   = 0
-$errored  = 0
+$copied        = 0
+$upToDate      = 0
+$notFound      = 0
+$noData        = 0
+$errored       = 0
+$notionUpdated = 0
+$notionFailed  = 0
 
 foreach ($page in $allPages) {
 
@@ -193,6 +222,7 @@ foreach ($page in $allPages) {
     # Copy (or preview)
     if ($DryRun) {
         Write-Host "[DRY RUN]  $familyName  ->  $category\$destFileName" -ForegroundColor Magenta
+        Write-Host "           Notion 'Audited File Location' would be set to: $destFile" -ForegroundColor DarkMagenta
         $copied++
     } else {
         try {
@@ -202,6 +232,17 @@ foreach ($page in $allPages) {
         } catch {
             Write-Host "ERROR     : $familyName  --  $_" -ForegroundColor Red
             $errored++
+            continue
+        }
+
+        # Write destination path back to Notion
+        try {
+            Set-AuditedLocation $page.id $destFile
+            Write-Host "  NOTION  : 'Audited File Location' updated" -ForegroundColor DarkGreen
+            $notionUpdated++
+        } catch {
+            Write-Host "  NOTION  : Failed to update 'Audited File Location' -- $_" -ForegroundColor Yellow
+            $notionFailed++
         }
     }
 }
@@ -211,9 +252,11 @@ foreach ($page in $allPages) {
 $label = if ($DryRun) { " (DRY RUN)" } else { "" }
 Write-Host ""
 Write-Host "════════════════ SUMMARY$label ════════════════" -ForegroundColor White
-Write-Host "  Copied       : $copied"    -ForegroundColor Green
-Write-Host "  Up-to-date   : $upToDate"  -ForegroundColor DarkGray
-Write-Host "  Source missing: $notFound" -ForegroundColor $(if ($notFound -gt 0) { "Red" } else { "DarkGray" })
-Write-Host "  Missing data : $noData"    -ForegroundColor $(if ($noData   -gt 0) { "Yellow" } else { "DarkGray" })
-Write-Host "  Errors       : $errored"   -ForegroundColor $(if ($errored  -gt 0) { "Red" } else { "DarkGray" })
+Write-Host "  Copied          : $copied"         -ForegroundColor Green
+Write-Host "  Notion updated  : $notionUpdated"  -ForegroundColor $(if ($notionUpdated -gt 0) { "Green" } else { "DarkGray" })
+Write-Host "  Up-to-date      : $upToDate"       -ForegroundColor DarkGray
+Write-Host "  Source missing  : $notFound"       -ForegroundColor $(if ($notFound -gt 0) { "Red" } else { "DarkGray" })
+Write-Host "  Missing data    : $noData"         -ForegroundColor $(if ($noData   -gt 0) { "Yellow" } else { "DarkGray" })
+Write-Host "  Copy errors     : $errored"        -ForegroundColor $(if ($errored  -gt 0) { "Red" } else { "DarkGray" })
+Write-Host "  Notion failures : $notionFailed"   -ForegroundColor $(if ($notionFailed -gt 0) { "Yellow" } else { "DarkGray" })
 Write-Host ""
