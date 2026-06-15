@@ -208,13 +208,25 @@ foreach ($page in $allPages) {
         continue
     }
 
-    # Skip if destination is already up-to-date
+    # Skip if destination is already up-to-date; backfill Notion if location field is blank
     if (Test-Path $destFile) {
         $srcTime = (Get-Item $location).LastWriteTimeUtc
         $dstTime = (Get-Item $destFile).LastWriteTimeUtc
         if ($srcTime -le $dstTime) {
             Write-Host "UP-TO-DATE: $category\$destFileName" -ForegroundColor DarkGray
             $upToDate++
+
+            $currentLocation = Get-TextProp $props "Audited File Location"
+            if (-not $DryRun -and -not $currentLocation) {
+                try {
+                    Set-AuditedLocation $page.id $destFile
+                    Write-Host "  NOTION  : 'Audited File Location' backfilled" -ForegroundColor DarkGreen
+                    $notionUpdated++
+                } catch {
+                    Write-Host "  NOTION  : Failed to backfill 'Audited File Location' -- $_" -ForegroundColor Yellow
+                    $notionFailed++
+                }
+            }
             continue
         }
     }
