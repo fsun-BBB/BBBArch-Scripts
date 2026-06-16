@@ -1,42 +1,40 @@
 # Family Benchmark
 
-A pyRevit tool that batch-analyses Revit family files (`.rfa`) for efficiency, cleanliness,
-and geometry complexity — then writes results to a Notion database and exports a CSV.
+A pyRevit button that scans any folder of Revit families, scores each `.rfa` across five
+dimensions, and writes results to Notion and a CSV.
+
+> Full reference guide (what every column means, higher vs. lower):
+> [Rating Reference & Guide](https://app.notion.com/p/c33208bc23ec47cda97de96a49554744)
 
 ---
 
-## What it does
+## How it works
 
-Click the **Family Benchmark** button in the FRANK Revit tab.
-A folder picker opens. Select any root folder (sub-folders are scanned recursively).
-The script opens each `.rfa` in the background via the Revit API, measures it across
-six dimensions, closes it without saving, then:
-
-- Streams a live progress report in the pyRevit output window
-- Writes all scores and metrics to the Notion **Revit Families** database
-- Exports `_benchmark_results.csv` to the selected folder
+1. Click **Family Benchmark** in the FRANK Revit tab
+2. Pick any root folder — sub-folders are scanned recursively
+3. The script opens each `.rfa` in the background, measures it, closes it without saving
+4. Results stream into the pyRevit output window in real time
+5. Scores are written to the Notion **Revit Families** database (matched by Proposed Name)
+6. `_benchmark_results.csv` is saved to the selected folder
 
 ---
 
-## Scoring System
+## Scoring
 
-Each family receives three weighted scores (v1 / v2 / v3), each out of 100, plus a
-standalone Geometry score out of 20.
+Each family gets three scores (v1 / v2 / v3), all out of 100, plus a standalone
+Geometry score out of 20. Higher is always better.
 
-### Score dimensions
+### Five dimensions — same for all configs
 
-| Dimension | What is measured |
-|---|---|
-| **File Size** | Raw `.rfa` weight on disk |
-| **Unused Parameters** | Type params with no formula, constant across all types · User-created instance params with no formula |
-| **Off-Template Bloat** | Imported CAD, drafting views, raster images, model text |
-| **Unnamed Ref Planes** | Reference planes still named "Reference Plane" (Revit default) |
-| **Nested Content** | Distinct nested family definitions + model groups |
-| **Geometry** *(standalone)* | Total face count across all solids in Fine detail |
+| Dimension | What loses points | Deduction |
+|---|---|---|
+| **File Size** | Raw `.rfa` weight on disk | Banded: < 500 KB = full · ≥ 5 MB = 0 |
+| **Unused Params** | Orphan type params · orphan instance params | −2 / −1 each |
+| **Off-Template Bloat** | Imported CAD · drafting views · raster images · model text | −8 flat / −4 / −5 / −3 |
+| **Unnamed Ref Planes** | Planes still named "Reference Plane" | −2 each |
+| **Nested Content** | Nested family defs · model groups | −3 / −5 each |
 
-### Configuration weights
-
-Three configs vary the relative weight of each dimension. All sum to 100.
+### Three configs — different weights
 
 | Config | File Size | Unused Params | Off-Template | Ref Planes | Nesting |
 |--------|----------:|-------------:|-------------:|-----------:|--------:|
@@ -44,131 +42,92 @@ Three configs vary the relative weight of each dimension. All sum to 100.
 | v2 — Lean Focus | 10 | 30 | 30 | 15 | 15 |
 | v3 — Weight on Nesting | 10 | 20 | 25 | 10 | 35 |
 
-Scores are computed by normalising raw subscores against the v1 base maxes and rescaling
-to each config's dimension weights — so changing a config's weight shifts how much that
-dimension contributes to the total without recomputing raw metrics.
+**Reading the spread:**
+- v3 much lower than v1/v2 → nesting problem
+- v2 lowest → parameter clutter or template bloat
+- All three low → multi-dimensional cleanup needed
 
-### Deduction rates
+### Geometry Score (separate /20)
 
-| Dimension | Rule |
-|---|---|
-| File Size | < 500 KB = 100 % · < 1 MB = 73 % · < 2 MB = 47 % · < 5 MB = 20 % · ≥ 5 MB = 0 |
-| Unused Params | −2 pts per orphan type param · −1 pt per orphan instance param |
-| Off-Template | −8 pts if any CAD · −4 per drafting view · −5 per raster image · −3 per model text |
-| Ref Planes | −2 pts per unnamed plane |
-| Nested | −3 pts per nested family definition · −5 per model group |
-| Geometry | < 20 faces = 20 · < 50 = 16 · < 100 = 12 · < 200 = 7 · < 500 = 3 · ≥ 500 = 0 |
+Face count at Fine detail, banded:
+`< 20 = 20 · < 50 = 16 · < 100 = 12 · < 200 = 7 · < 500 = 3 · ≥ 500 = 0`
+
+A family can have a perfect /100 and still be geometrically heavy — always check Geom Score separately.
+
+---
+
+## Columns written to Notion
+
+**Legend: 📈 higher is better · 📉 lower is better · ⚖️ informational**
+
+| Column | Dir | Notes |
+|--------|:---:|-------|
+| Score v1 | 📈 | Balanced baseline (15+25+25+15+20) |
+| Score v2 | 📈 | Punishes param clutter and bloat harder |
+| Score v3 | 📈 | Punishes nesting harder |
+| Geom Score | 📈 | Independent /20, face count |
+| Face Count | 📉 | Raw driver of Geom Score. Target < 20 |
+| Solid Count | 📉 | More solids = more faces = heavier |
+| Edge Count | 📉 | Secondary geometric density indicator |
+| Imported CAD | 📉 | Any non-zero triggers −8. Target: 0 |
+| Raster Images | 📉 | Should never be in a production family. Target: 0 |
+| Nested Families | 📉 | Each one inflates load time. Target: 0 unless deliberate |
+| Model Groups | 📉 | Shouldn't exist inside a clean family. Target: 0 |
+| Unnamed Ref Planes | 📉 | Can't be reliably referenced or locked. Target: 0 |
+| Orphan Type Params | 📉 | No formula, same value in all types. Dead clutter. Target: 0 |
+| Orphan Inst Params | 📉 | User-created, no formula, not required. Dead clutter. Target: 0 |
+| Total Params | ⚖️ | High totals usually mean orphan buildup |
+| Shared Params | ⚖️ | Should be non-zero on any scheduled family |
+| Formula Params | ⚖️ | Some healthy; too many slow regeneration |
+
+---
+
+## How to read a family
+
+1. **Start with Score v1** — balanced baseline
+2. **Compare v2 and v3 to v1** — identifies the type of problem (params vs. nesting)
+3. **Check Geom Score separately** — geometry is independent of the /100
+4. **Drill into count columns** — shows exactly what's dragging the score down
+5. **Set Review Status** — Conform, Wishlist, or Blocker based on findings
 
 ---
 
 ## Installation
 
-This script runs inside Revit via the [pyRevit](https://github.com/pyrevitlabs/pyRevit)
-framework. It is not a standalone Python script.
-
-1. Copy `script.py` into your pyRevit extension under a `.pushbutton` folder:
+Requires [pyRevit](https://github.com/pyrevitlabs/pyRevit). Copy `script.py` into a
+`.pushbutton` folder inside your pyRevit extension, then reload pyRevit.
 
 ```
-<YourExtension>.extension/
-└── <YourTab>.tab/
-    └── <YourPanel>.panel/
+YourExtension.extension/
+└── YourTab.tab/
+    └── YourPanel.panel/
         └── FamilyBenchmark.pushbutton/
             └── script.py
 ```
-
-2. Reload pyRevit (pyRevit tab → Reload).
-
-The button will appear in your panel. Click to run.
 
 ---
 
 ## Configuration
 
-Edit the constants block at the top of `script.py` before the first run:
+Edit the top of `script.py`:
 
 ```python
-# Path to your firm's AUDITED family library (used as a fallback token search location)
-AUDITED_ROOT = r"N:\..."
-
-# Notion database ID for the Revit Families database
-DATABASE_ID = "your-database-id-here"
-
-# Shared parameter names required on every family regardless of category
-REQUIRED_PARAMS = [
-    "Manufacturer", "Model", "OmniClass Number", ...
-]
-
-# Scoring config weights — must each sum to 100
-CONFIGS = [
-    {"label": "v1", "size": 15, "up": 25, "ot": 25, "rp": 15, "nc": 20},
-    ...
-]
+AUDITED_ROOT    = r"N:\..."                         # fallback token search path
+DATABASE_ID     = "your-notion-database-id"
+REQUIRED_PARAMS = ["Manufacturer", "Model", ...]    # params required on every family
+CONFIGS         = [...]                             # scoring weights — must each sum to 100
 ```
 
----
+### Notion token
 
-## Notion Integration
-
-The script writes results back to a Notion database after each run.
-Matching is done by **Proposed Name** (the intended filename without `.rfa`),
-so it works regardless of where the files are scanned from.
-
-### Setup
-
-1. Create a Notion integration at [notion.so/profile/integrations](https://www.notion.so/profile/integrations).
-2. Share the Revit Families database with the integration.
-3. Save the token to a file called `notion_token.txt` in either:
-   - The root folder you select at scan time, or
-   - The `AUDITED_ROOT` path defined in the script.
-
-### Columns written to Notion
-
-**Scores**
-`Score v1` · `Score v2` · `Score v3` · `Geom Score`
-
-**Performance**
-`Face Count` · `Solid Count` · `Edge Count` · `Imported CAD` · `Raster Images` ·
-`Nested Families` · `Model Groups`
-
-**Cleanliness**
-`Unnamed Ref Planes` · `Orphan Type Params` · `Orphan Inst Params`
-
-**Informational**
-`Shared Params` · `Total Params` · `Formula Params`
-
----
-
-## CSV Output
-
-`_benchmark_results.csv` is saved to the selected root folder after every run.
-Column groups match the Notion columns above.
-
-| Group | Columns |
-|---|---|
-| Identity | `name` · `rel` · `bytes` · `size_fmt` |
-| Scores | `v1` · `v2` · `v3` |
-| Performance | `n_faces` · `n_solids` · `n_edges` · `n_cad` · `n_images` · `n_nested` · `n_groups` |
-| Cleanliness | `n_anon_rp` · `n_unused_type` · `unused_type` · `n_unused_inst` · `unused_inst` |
-| Informational | `n_shared` · `n_params` · `n_formula_params` |
-
----
-
-## Notes
-
-- The script runs inside Revit — opening families uses the Revit API, not a file parser.
-  Revit must be open and a project must be active.
-- Geometry collection uses **Fine** detail level and traverses into nested family geometry,
-  since that is what loads into the model on placement.
-- Orphan instance param detection skips **shared** parameters (MEP connector data,
-  system parameters) — only user-created instance params with no formula are flagged.
-- For single-type families, orphan type param detection is skipped (cannot determine
-  whether a param would vary if more types were added).
+Save your Notion integration token as `notion_token.txt` in either the selected scan
+folder or the `AUDITED_ROOT` path. The script looks in both.
 
 ---
 
 ## Related
 
-- `scripts/powershell/Sync-ApprovedFamilies.ps1` — syncs approved families from Notion
-  to the AUDITED folder and writes `Audited File Location` back to each Notion page.
-- Notion page: **Revit Family Rating System** — documents the scoring configs and hosts
-  the "Scores by Family" linked view.
+- [`scripts/powershell/Sync-ApprovedFamilies.ps1`](../powershell/Sync-ApprovedFamilies.ps1) —
+  syncs Approved families from Notion to the AUDITED folder
+- [Revit Family Rating System](https://app.notion.com/p/381d917dca7581fc9f50d6eb6d02367a) —
+  Notion page with scoring configs and the Scores by Family view
