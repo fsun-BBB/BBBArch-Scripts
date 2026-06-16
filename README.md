@@ -54,6 +54,18 @@ RUFF is configured in `pyproject.toml`.
 - **Docstrings**: Google style, required on all public functions, classes, and modules.
 - **Environments**: One venv per repo — never install globally.
 
-## Notes on pyRevit Scripts
+## Scripts
+
+### pyRevit
 
 Scripts under `scripts/pyrevit/` target pyRevit's embedded IronPython environment and run inside Revit. External packages are difficult to install in that context — keep dependencies minimal and prefer the standard library or pyRevit's bundled libraries.
+
+| Script | Description |
+|--------|-------------|
+| [FamilyBenchmark](scripts/pyrevit/FamilyBenchmark/) | Batch-analyses `.rfa` files for efficiency, cleanliness, and geometry complexity. Scores each family under three weighted configs, writes results to Notion, and exports a CSV. |
+
+### PowerShell
+
+| Script | Description |
+|--------|-------------|
+| [Sync-ApprovedFamilies](scripts/powershell/Sync-ApprovedFamilies.ps1) | Queries the Notion Revit Families database for Approved entries and copies each source `.rfa` to the AUDITED folder, renaming to the Proposed Name and writing the destination path back to Notion. |
