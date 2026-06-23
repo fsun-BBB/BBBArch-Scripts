@@ -1,0 +1,7 @@
+title: Ceiling Tags
+layout:
+  - UpdateTags
+  - ClearanceCheck
+  - Configure
+  - '-----'
+  - Documentation
