@@ -1,39 +1,59 @@
 <#
 .SYNOPSIS
-    Syncs Approved Revit families from the Notion database to the AUDITED folder.
+    Syncs Revit families from the Notion "Revit Families" database to the AUDITED folder.
 
 .DESCRIPTION
-    Queries the "Revit Families" Notion database for all entries with Review Status = "Approved",
-    then copies each source file to the AUDITED folder under its Category subfolder,
-    renaming it to the Proposed Name.
+    Queries the Notion database for all entries whose Review Status matches -Status
+    (default "Cleaned"), then copies each family's source file to the AUDITED folder
+    under its Category subfolder, renaming it to the Proposed Name. The destination
+    path is written back to the Notion "Audited File Location" field.
+
+    SOURCE FIELD PRIORITY:
+    The source file is taken from the first of these Notion fields that is populated:
+        1. "Original Location"  (N:\...\01_BIM CONTENT\2025\...  -- the canonical library copy)
+        2. "Source Location"    (H:\<project>\...                -- per-project working copy)
+        3. "Location"           (legacy field name)
+    Always prefer "Original Location": the N: library is the curated source of truth,
+    the H: paths are project working folders.
+
+.PARAMETER Status
+    The Review Status to filter on. Defaults to "Cleaned".
+    Common values: Cleaned, Approved, Conformed, Uploaded.
 
 .PARAMETER NotionToken
-    Your Notion integration token (starts with "secret_...").
-    If omitted, the script reads it from notion_token.txt in the same folder.
+    Your Notion integration token. If omitted, the script reads it from
+    notion_token.txt in the same folder as this script.
 
 .PARAMETER DestRoot
-    The root AUDITED folder. Defaults to the folder where this script lives.
+    The root AUDITED folder. Defaults to the live library path on the N: drive.
+
+.PARAMETER CreateAllCategoryFolders
+    Pre-create an empty subfolder for EVERY category in the database (not just the
+    ones that have matching families), so the AUDITED tree is complete.
 
 .PARAMETER DryRun
-    Preview what would be copied without actually copying anything.
+    Preview what would be copied without copying anything or writing back to Notion.
 
 .EXAMPLE
-    .\Sync-ApprovedFamilies.ps1
-    .\Sync-ApprovedFamilies.ps1 -DryRun
-    .\Sync-ApprovedFamilies.ps1 -NotionToken "secret_abc123..."
+    .\Sync-AuditedFamilies.ps1 -DryRun
+    .\Sync-AuditedFamilies.ps1
+    .\Sync-AuditedFamilies.ps1 -Status Approved
+    .\Sync-AuditedFamilies.ps1 -CreateAllCategoryFolders
 
 .NOTES
     FIRST-TIME SETUP:
     1. Go to https://www.notion.so/profile/integrations and create a new integration.
-    2. Copy the "Internal Integration Token" (starts with secret_...).
-    3. Open your Revit Families Notion database, click the 3-dot menu > Connections,
-       and connect your integration so it has read access.
+    2. Copy the integration token.
+    3. Open the Revit Families Notion database, click the 3-dot menu > Connections,
+       and connect your integration so it has read/write access.
     4. Paste the token into a file called "notion_token.txt" in the same folder as this script.
 #>
 
 param(
+    [string]$Status      = "Cleaned",
     [string]$NotionToken = "",
-    [string]$DestRoot    = $PSScriptRoot,
+    [string]$DestRoot    = "N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\1_AUDITED",
+    [switch]$CreateAllCategoryFolders,
     [switch]$DryRun
 )
 
@@ -43,6 +63,15 @@ $ErrorActionPreference = "Stop"
 
 $DATABASE_ID = "e561580b-eff2-4323-95b0-ef2db491dd6f"
 $TOKEN_FILE  = Join-Path $PSScriptRoot "notion_token.txt"
+
+# All Category options in the database. Used by -CreateAllCategoryFolders.
+$ALL_CATEGORIES = @(
+    "Air Terminals", "Amenity Families", "Amenity-BOH Bathrooms", "Annotations", "Casework",
+    "Detail Items", "Doors", "Electrical", "Vertical Circulation", "Fire Protection", "Furniture",
+    "Life Safety", "Lighting Fixtures", "Equipment", "Parking", "Plumbing Fixtures", "Site",
+    "Security Devices", "Sprinkler", "Unit Families", "Kitchen Appliances", "Accessories - Bathroom",
+    "Bathrooms", "Elements", "Kitchens and Millwork", "Wall Finishes", "Kitchens", "Windows", "Ceiling Devices"
+)
 
 # ── Resolve token ─────────────────────────────────────────────────────────────
 
@@ -55,7 +84,7 @@ if (-not $NotionToken) {
         Write-Host ""
         Write-Host "FIRST-TIME SETUP:" -ForegroundColor Yellow
         Write-Host "  1. Go to https://www.notion.so/profile/integrations"
-        Write-Host "  2. Create a new integration and copy the token (starts with secret_...)"
+        Write-Host "  2. Create a new integration and copy the token"
         Write-Host "  3. In Notion, open the Revit Families database > 3-dot menu > Connections"
         Write-Host "     and connect your integration."
         Write-Host "  4. Create this file and paste the token into it:"
@@ -65,7 +94,7 @@ if (-not $NotionToken) {
     }
 }
 
-# ── Helper: safely read a Notion property ────────────────────────────────────
+# ── Helpers: safely read Notion properties ────────────────────────────────────
 
 function Get-TextProp($props, $name) {
     try { $props.$name.rich_text[0].plain_text } catch { "" }
@@ -77,6 +106,14 @@ function Get-TitleProp($props, $name) {
 
 function Get-SelectProp($props, $name) {
     try { $props.$name.select.name } catch { "" }
+}
+
+# Read the source path, preferring the canonical N: library copy.
+function Get-SourceLocation($props) {
+    $loc = Get-TextProp $props "Original Location"
+    if (-not $loc) { $loc = Get-TextProp $props "Source Location" }
+    if (-not $loc) { $loc = Get-TextProp $props "Location" }
+    return $loc
 }
 
 # ── Helper: write Audited File Location back to a Notion page ─────────────────
@@ -106,10 +143,24 @@ function Set-AuditedLocation($pageId, $filePath) {
     $res.Close()
 }
 
+# ── Optionally pre-create every category folder ──────────────────────────────
+
+if ($CreateAllCategoryFolders) {
+    Write-Host ""
+    Write-Host "Ensuring a folder exists for every category..." -ForegroundColor Cyan
+    foreach ($cat in $ALL_CATEGORIES) {
+        $catPath = Join-Path $DestRoot $cat
+        if (-not (Test-Path $catPath)) {
+            if (-not $DryRun) { New-Item -ItemType Directory -Path $catPath -Force | Out-Null }
+            Write-Host "  Created: $cat" -ForegroundColor Green
+        }
+    }
+}
+
 # ── Query Notion database (paginated) ────────────────────────────────────────
 
 Write-Host ""
-Write-Host "Querying Notion for Approved families..." -ForegroundColor Cyan
+Write-Host "Querying Notion for '$Status' families..." -ForegroundColor Cyan
 
 $allPages = @()
 $cursor   = $null
@@ -122,7 +173,7 @@ do {
     $body = @{
         filter    = @{
             property = "Review Status"
-            status   = @{ equals = "Approved" }
+            status   = @{ equals = $Status }
         }
         page_size = 100
     }
@@ -159,7 +210,7 @@ do {
 
 } while ($cursor)
 
-Write-Host "  Found $($allPages.Count) Approved entries." -ForegroundColor Green
+Write-Host "  Found $($allPages.Count) '$Status' entries." -ForegroundColor Green
 Write-Host ""
 
 # ── Process each entry ───────────────────────────────────────────────────────
@@ -175,10 +226,10 @@ $notionFailed  = 0
 foreach ($page in $allPages) {
 
     $props        = $page.properties
-    $familyName   = Get-TitleProp  $props "Family Name"
-    $location     = Get-TextProp   $props "Location"
-    $proposedName = Get-TextProp   $props "Proposed Name"
-    $category     = Get-SelectProp $props "Category"
+    $familyName   = Get-TitleProp     $props "Family Name"
+    $location     = Get-SourceLocation $props
+    $proposedName = Get-TextProp      $props "Proposed Name"
+    $category     = Get-SelectProp    $props "Category"
 
     # Skip entries missing required fields
     if (-not $location -or -not $proposedName -or -not $category) {
@@ -234,7 +285,7 @@ foreach ($page in $allPages) {
     # Copy (or preview)
     if ($DryRun) {
         Write-Host "[DRY RUN]  $familyName  ->  $category\$destFileName" -ForegroundColor Magenta
-        Write-Host "           Notion 'Audited File Location' would be set to: $destFile" -ForegroundColor DarkMagenta
+        Write-Host "           source: $location" -ForegroundColor DarkMagenta
         $copied++
     } else {
         try {
@@ -263,7 +314,8 @@ foreach ($page in $allPages) {
 
 $label = if ($DryRun) { " (DRY RUN)" } else { "" }
 Write-Host ""
-Write-Host "════════════════ SUMMARY$label ════════════════" -ForegroundColor White
+Write-Host "================ SUMMARY$label ================" -ForegroundColor White
+Write-Host "  Status filter   : $Status"
 Write-Host "  Copied          : $copied"         -ForegroundColor Green
 Write-Host "  Notion updated  : $notionUpdated"  -ForegroundColor $(if ($notionUpdated -gt 0) { "Green" } else { "DarkGray" })
 Write-Host "  Up-to-date      : $upToDate"       -ForegroundColor DarkGray

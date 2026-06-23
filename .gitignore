@@ -30,3 +30,5 @@ Thumbs.db
 # Secrets / local config
 .env
 *.local
+notion_token.txt
+*token*.txt

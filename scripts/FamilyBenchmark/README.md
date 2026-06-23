@@ -127,7 +127,7 @@ folder or the `AUDITED_ROOT` path. The script looks in both.
 
 ## Related
 
-- [`scripts/powershell/Sync-ApprovedFamilies.ps1`](../powershell/Sync-ApprovedFamilies.ps1) —
-  syncs Approved families from Notion to the AUDITED folder
+- [`scripts/SyncAuditedFamilies/`](../SyncAuditedFamilies/) —
+  syncs reviewed families (Cleaned/Approved/…) from Notion to the AUDITED folder
 - [Revit Family Rating System](https://app.notion.com/p/381d917dca7581fc9f50d6eb6d02367a) —
   Notion page with scoring configs and the Scores by Family view
