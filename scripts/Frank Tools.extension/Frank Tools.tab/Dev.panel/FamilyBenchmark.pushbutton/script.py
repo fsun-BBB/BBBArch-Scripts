@@ -68,7 +68,7 @@ if not ROOT:
 # ── CONSTANTS ─────────────────────────────────────────────────────────────────
 
 AUDITED_ROOT = r"N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\1_AUDITED"
-DATABASE_ID  = "8c0d917d-ca75-8237-85bc-87583b0f74e8"   # Revit Families Scores
+DATABASE_ID  = "387d917d-ca75-818e-b124-e7b8f7a8d530"   # Revit Families Scores
 RUNS_DB_ID   = "387d917d-ca75-80a8-a323-de09adfce8ab"   # Revit Families Scores Log
 
 _token_candidates = [
