@@ -335,7 +335,7 @@ def _update_family_scores(page_id, token, r):
 
 def _add_log_row(family_page_id, family_name, category, token, r, run_time):
     """Append a new log entry to the A database — always creates, never updates."""
-    title = "{} - {}".format(family_name, run_time)
+    title = "{} - {}".format(run_time, family_name)
     _notion_call(
         "https://api.notion.com/v1/pages", token, "POST",
         {"parent": {"database_id": RUNS_DB_ID},
@@ -762,7 +762,7 @@ elif scored:
             '<div style="color:#555;font-size:11px;margin-bottom:8px">'
             '{} entries in database</div>'.format(len(page_map)))
 
-        run_time = datetime.datetime.now().strftime("%m/%d/%Y %I:%M %p")
+        run_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
         n_written = 0
         n_failed  = 0
