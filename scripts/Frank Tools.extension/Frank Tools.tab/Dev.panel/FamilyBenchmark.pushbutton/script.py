@@ -320,15 +320,18 @@ def _update_family_scores(page_id, token, r):
             "Total Params":       {"number": r.get("n_params", 0)},
             "Formula Params":     {"number": r.get("n_formula_params", 0)},
         }})
-    # Off-template columns — separate call so a name mismatch doesn't break main scores
-    _notion_call(
-        "https://api.notion.com/v1/pages/{}".format(page_id), token, "PATCH",
-        {"properties": {
-            "Line Styles":        {"number": r.get("n_line_styles", 0)},
-            "Dimensions":         {"number": r.get("n_dims", 0)},
-            "Filled Regions":     {"number": r.get("n_filled", 0)},
-            "Text Styles":        {"number": r.get("n_text_styles", 0)},
-        }})
+    # Off-template columns — separate call, failure is silent so main scores still count
+    try:
+        _notion_call(
+            "https://api.notion.com/v1/pages/{}".format(page_id), token, "PATCH",
+            {"properties": {
+                "Line Styles":    {"number": r.get("n_line_styles", 0)},
+                "Dimensions":     {"number": r.get("n_dims", 0)},
+                "Filled Regions": {"number": r.get("n_filled", 0)},
+                "Text Styles":    {"number": r.get("n_text_styles", 0)},
+            }})
+    except Exception as _ot_exc:
+        return "OT_ERR:{}".format(str(_ot_exc)[:300])
 
 def _add_log_row(family_page_id, family_name, category, token, r, run_time):
     """Append a new log entry to the A database — always creates, never updates."""
@@ -771,8 +774,13 @@ elif scored:
                 continue
             pid, category = result
             try:
-                _update_family_scores(pid, token, r)
+                _ot_result = _update_family_scores(pid, token, r)
                 n_written += 1
+                if _ot_result and _ot_result.startswith("OT_ERR:") and n_written == 1:
+                    output.print_html(
+                        '<div style="color:#f2994a;font-size:10px;font-family:monospace;'
+                        'margin:2px 0">Off-template columns error (check Notion column names): '
+                        '{}</div>'.format(_ot_result[7:]))
             except Exception as _row_exc:
                 n_failed += 1
                 if n_failed <= 3:
