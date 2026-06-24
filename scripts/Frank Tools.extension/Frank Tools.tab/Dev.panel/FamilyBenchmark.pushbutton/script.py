@@ -414,8 +414,7 @@ for idx, fpath in enumerate(rfa_files, 1):
             '</div>'.format(idx - 1, len(rfa_files)))
         break
 
-    _pb.update_progress(idx, len(rfa_files),
-                        title="Family Benchmark  —  {} / {}".format(idx, len(rfa_files)))
+    _pb.update_progress(idx, len(rfa_files))
 
     rel  = os.path.relpath(fpath, ROOT)
     name = os.path.splitext(os.path.basename(fpath))[0]
