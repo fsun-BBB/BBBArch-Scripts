@@ -35,6 +35,7 @@ from Autodesk.Revit.DB import (
     ModelPathUtils, OpenOptions, BuiltInCategory,
     ViewDetailLevel, Solid, GeometryInstance, Options,
     Dimension, InternalDefinition, BuiltInParameter,
+    FilledRegion, TextNoteType,
 )
 from pyrevit import script, forms
 
@@ -320,6 +321,11 @@ def _update_family_scores(page_id, token, r):
             "Shared Params":      {"number": r.get("n_shared", 0)},
             "Total Params":       {"number": r.get("n_params", 0)},
             "Formula Params":     {"number": r.get("n_formula_params", 0)},
+            # Off-template
+            "Line Styles":        {"number": r.get("n_line_styles", 0)},
+            "Dimensions":         {"number": r.get("n_dims", 0)},
+            "Filled Regions":     {"number": r.get("n_filled", 0)},
+            "Text Styles":        {"number": r.get("n_text_styles", 0)},
         }})
 
 def _add_log_row(family_page_id, family_name, category, token, r, run_time):
@@ -349,6 +355,10 @@ def _add_log_row(family_page_id, family_name, category, token, r, run_time):
              "Total Params":      {"number": r.get("n_params", 0)},
              "Shared Params":     {"number": r.get("n_shared", 0)},
              "Formula Params":    {"number": r.get("n_formula_params", 0)},
+             "Line Styles":       {"number": r.get("n_line_styles", 0)},
+             "Dimensions":        {"number": r.get("n_dims", 0)},
+             "Filled Regions":    {"number": r.get("n_filled", 0)},
+             "Text Styles":       {"number": r.get("n_text_styles", 0)},
          }})
 
 # ── HTML HELPERS ──────────────────────────────────────────────────────────────
@@ -464,7 +474,9 @@ for idx, fpath in enumerate(rfa_files, 1):
                         formula_inputs.add(other.Id.IntegerValue)
 
         dim_associated = set()
-        for dim in FilteredElementCollector(fdoc).OfClass(Dimension).ToElements():
+        _all_dims = list(FilteredElementCollector(fdoc).OfClass(Dimension).ToElements())
+        n_dims = len(_all_dims)
+        for dim in _all_dims:
             try:
                 if dim.FamilyLabel is not None:
                     dim_associated.add(dim.FamilyLabel.Id.IntegerValue)
@@ -517,6 +529,15 @@ for idx, fpath in enumerate(rfa_files, 1):
 
         n_nested = len(list(FilteredElementCollector(fdoc).OfClass(Family).ToElements()))
         n_groups = len(list(FilteredElementCollector(fdoc).OfClass(Group).ToElements()))
+
+        # ── Off-template informational (no score impact) ──────────────────────
+        try:
+            _lc = fdoc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines)
+            n_line_styles = sum(1 for sc in _lc.SubCategories if not sc.Name.startswith('<')) if _lc else 0
+        except Exception: n_line_styles = 0
+        n_filled      = len(list(FilteredElementCollector(fdoc).OfClass(FilledRegion).ToElements()))
+        n_text_styles = len(list(FilteredElementCollector(fdoc).OfClass(TextNoteType).ToElements()))
+
         n_solids, n_faces, n_edges = _collect_geom(fdoc)
         g_score  = score_geom(n_faces)
 
@@ -554,6 +575,8 @@ for idx, fpath in enumerate(rfa_files, 1):
             "n_shared":n_shared,
             "n_params":len(all_fparams),
             "n_formula_params":n_formula_params,
+            "n_line_styles":n_line_styles,"n_dims":n_dims,
+            "n_filled":n_filled,"n_text_styles":n_text_styles,
             "err":"",
         })
 
@@ -637,6 +660,10 @@ if scored:
       <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Params</th>
       <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Shared</th>
       <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Formulas</th>
+      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a;border-left:1px solid #2a2a2a">Line Styles</th>
+      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Dims</th>
+      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Filled Rgn</th>
+      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Text Styles</th>
     </tr>
   </thead><tbody>""")
 
@@ -646,7 +673,7 @@ if scored:
             '<tr style="background:{bg};border-bottom:1px solid #1a1a1a">'
             '<td style="padding:5px 10px;color:#333;font-size:10px">{i}</td>'
             '<td style="padding:5px 10px;color:#d0d0d0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{n}</td>'
-            '{sz}{fs}{ws}{gm}{fc}{cd}{img}{ns}{grp}{rp}{ut}{ui}{pm}{sh}{fm}</tr>'.format(
+            '{sz}{fs}{ws}{gm}{fc}{cd}{img}{ns}{grp}{rp}{ut}{ui}{pm}{sh}{fm}{ls}{dm}{fl}{ts}</tr>'.format(
                 bg=bg,i=i,n=r["name"],
                 sz=_num_td(r["size_fmt"]),
                 fs=_score_td(r["fs"]),
@@ -663,6 +690,10 @@ if scored:
                 pm=_num_td(r["n_params"]),
                 sh=_flag_td(r["n_shared"]),
                 fm=_num_td(r["n_formula_params"]),
+                ls=_flag_td(r.get("n_line_styles",0)),
+                dm=_flag_td(r.get("n_dims",0)),
+                fl=_flag_td(r.get("n_filled",0)),
+                ts=_flag_td(r.get("n_text_styles",0)),
             )
         )
 
@@ -799,6 +830,10 @@ _CSV_MAP = [
     ("n_shared",         "Shared Params"),
     ("n_params",         "Total Params"),
     ("n_formula_params", "Formula Params"),
+    ("n_line_styles",    "Line Styles"),
+    ("n_dims",           "Dimensions"),
+    ("n_filled",         "Filled Regions"),
+    ("n_text_styles",    "Text Styles"),
     ("err",              "Error"),
 ]
 _csv_fields = [col for _, col in _CSV_MAP]
