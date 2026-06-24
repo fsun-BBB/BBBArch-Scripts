@@ -299,13 +299,13 @@ def _load_page_map_by_name(token):
     return lookup
 
 def _update_family_scores(page_id, token, r):
+    # Main scores — always runs, same as before my off-template addition
     _notion_call(
         "https://api.notion.com/v1/pages/{}".format(page_id), token, "PATCH",
         {"properties": {
             "Final Score":        {"number": r.get("fs", 0)},
             "Geom Score":         {"number": r.get("g_score", 0)},
             "File Size":          {"rich_text": [{"type": "text", "text": {"content": "{:.2f} MB".format(r.get("bytes", 0) / 1000000.0)}}]},
-            # Performance
             "Face Count":         {"number": r.get("n_faces", 0)},
             "Solid Count":        {"number": r.get("n_solids", 0)},
             "Edge Count":         {"number": r.get("n_edges", 0)},
@@ -313,15 +313,17 @@ def _update_family_scores(page_id, token, r):
             "Raster Images":      {"number": r.get("n_images", 0)},
             "Nested Families":    {"number": r.get("n_nested", 0)},
             "Model Groups":       {"number": r.get("n_groups", 0)},
-            # Cleanliness
             "Unnamed Ref Planes": {"number": r.get("n_anon_rp", 0)},
             "Unused Type Params": {"number": r.get("n_unused_type", 0)},
             "Unused Inst Params": {"number": r.get("n_unused_inst", 0)},
-            # Informational
             "Shared Params":      {"number": r.get("n_shared", 0)},
             "Total Params":       {"number": r.get("n_params", 0)},
             "Formula Params":     {"number": r.get("n_formula_params", 0)},
-            # Off-template
+        }})
+    # Off-template columns — separate call so a name mismatch doesn't break main scores
+    _notion_call(
+        "https://api.notion.com/v1/pages/{}".format(page_id), token, "PATCH",
+        {"properties": {
             "Line Styles":        {"number": r.get("n_line_styles", 0)},
             "Dimensions":         {"number": r.get("n_dims", 0)},
             "Filled Regions":     {"number": r.get("n_filled", 0)},
@@ -773,11 +775,11 @@ elif scored:
                 n_written += 1
             except Exception as _row_exc:
                 n_failed += 1
-                if n_failed == 1:
+                if n_failed <= 3:
                     output.print_html(
                         '<div style="color:#eb5757;font-size:10px;font-family:monospace;'
                         'margin:2px 0">Write error ({}): {}</div>'.format(
-                            r["name"], str(_row_exc)[:300]))
+                            r["name"], str(_row_exc)[:600]))
             try:
                 _add_log_row(pid, r["name"], category, token, r, run_time)
             except Exception as _log_exc:
