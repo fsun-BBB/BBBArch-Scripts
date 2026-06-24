@@ -1,12 +1,12 @@
-# Frank's Tool (pyRevit extension)
+# Frank Tools (pyRevit extension)
 
-The full **Frank's Tool** pyRevit extension (formerly `FRANK.extension`), moved here from the
+The full **Frank Tools** pyRevit extension (formerly `FRANK.extension`), moved here from the
 local pyRevit folder so it lives under version control. This is a complete pyRevit
 extension — not a single script — so it keeps the required `*.extension` / `*.tab` /
 `*.panel` / `*.pushbutton` folder structure.
 
 > Moved verbatim from `%APPDATA%\pyRevit` style location. The extension folder and its
-> ribbon tab were renamed `FRANK` → `Frank's Tool`.
+> ribbon tab were renamed `FRANK` → `Frank Tools`.
 
 ---
 
@@ -22,7 +22,7 @@ Revit no longer loads this from the old location. To re-register it:
 3. **Save Settings and Reload**.
 
 pyRevit discovers any `*.extension` folder in that directory, so the other per-script
-folders under `scripts/` are ignored. A **Frank's Tool** ribbon tab will appear.
+folders under `scripts/` are ignored. A **Frank Tools** ribbon tab will appear.
 
 ---
 
@@ -32,7 +32,7 @@ folders under `scripts/` are ignored. A **Frank's Tool** ribbon tab will appear.
 
 | Tool | Description |
 |---|---|
-| **FamilyBenchmark** | Scores `.rfa` families across five efficiency dimensions, writes to Notion, exports CSV. (Polished standalone copy: [`../FamilyBenchmark/`](../FamilyBenchmark/).) |
+| **FamilyBenchmark** | Scores `.rfa` families across five efficiency dimensions, writes to Notion, exports CSV. |
 | **FamilyOptimizer** | Largest tool — automated family cleanup / optimization. |
 | **GeoReducer** | Reduces geometry complexity in families. |
 | **ParamAudit** | Audits family parameters (orphans, unused, formula). |

@@ -24,7 +24,7 @@ scripts/
 ├── FamilyBenchmark/            # pyRevit (IronPython) — scores .rfa families
 ├── SyncAuditedFamilies/        # PowerShell — Notion → AUDITED folder sync
 ├── CLRCeilingHeights/          # pyRevit pulldown — ceiling clear-height calc + tags
-└── Frank's Tool.extension/     # Full pyRevit extension (dev toolbar), version-controlled
+└── Frank Tools.extension/      # Full pyRevit extension (dev toolbar), version-controlled
 ```
 
 Folder names are descriptive; a folder may mix languages if a tool needs it. A folder
@@ -79,7 +79,7 @@ RUFF is configured in `pyproject.toml`.
 | [FamilyBenchmark](scripts/FamilyBenchmark/) | pyRevit / Python | Batch-analyses `.rfa` files for efficiency, cleanliness, and geometry complexity. Scores each family under three weighted configs, writes results to Notion, and exports a CSV. |
 | [SyncAuditedFamilies](scripts/SyncAuditedFamilies/) | PowerShell | Queries the Notion Revit Families database for a given Review Status (default `Cleaned`) and copies each source `.rfa` to the AUDITED folder, renaming to the Proposed Name and writing the destination path back to Notion. |
 | [CLRCeilingHeights](scripts/CLRCeilingHeights/) | pyRevit / Python | Ceiling clear-height (ceiling-to-floor) calculator and tagger, plus clearance check and config. Snapshot of the production tool in `BBB-pyRevit-Toolbar`. |
-| [Frank's Tool.extension](scripts/Frank's%20Tool.extension/) | pyRevit extension | Full dev toolbar (FamilyBenchmark, FamilyOptimizer, GeoReducer, ParamAudit, PurgeUnused, CeilingHeights) plus pyRevit starter-kit boilerplate. Load via a pyRevit Custom Extension Directory. |
+| [Frank Tools.extension](scripts/Frank%20Tools.extension/) | pyRevit extension | Full dev toolbar (FamilyBenchmark, FamilyOptimizer, GeoReducer, ParamAudit, PurgeUnused, CeilingHeights) plus pyRevit starter-kit boilerplate. Load via a pyRevit Custom Extension Directory. |
 
 > **pyRevit note:** scripts that run inside Revit target pyRevit's embedded IronPython
 > environment. External packages are hard to install there — keep dependencies minimal and
