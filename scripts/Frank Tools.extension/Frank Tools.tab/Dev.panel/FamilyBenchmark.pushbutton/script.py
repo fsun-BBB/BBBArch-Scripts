@@ -34,7 +34,7 @@ from Autodesk.Revit.DB import (
     ViewDrafting, ModelText, Family, Group,
     ModelPathUtils, OpenOptions, BuiltInCategory,
     ViewDetailLevel, Solid, GeometryInstance, Options,
-    Dimension, InternalDefinition, BuiltInParameter,
+    Dimension, DimensionType, InternalDefinition, BuiltInParameter,
     FilledRegion, TextNoteType,
 )
 from pyrevit import script, forms
@@ -326,7 +326,7 @@ def _update_family_scores(page_id, token, r):
             "https://api.notion.com/v1/pages/{}".format(page_id), token, "PATCH",
             {"properties": {
                 "Line Styles":    {"number": r.get("n_line_styles", 0)},
-                "Dimensions":     {"number": r.get("n_dims", 0)},
+                "Dimension Styles": {"number": r.get("n_dims", 0)},
                 "Filled Regions": {"number": r.get("n_filled", 0)},
                 "Text Styles":    {"number": r.get("n_text_styles", 0)},
             }})
@@ -480,7 +480,7 @@ for idx, fpath in enumerate(rfa_files, 1):
 
         dim_associated = set()
         _all_dims = list(FilteredElementCollector(fdoc).OfClass(Dimension).ToElements())
-        n_dims = len(_all_dims)
+        n_dims = len(list(FilteredElementCollector(fdoc).OfClass(DimensionType).ToElements()))
         for dim in _all_dims:
             try:
                 if dim.FamilyLabel is not None:
@@ -537,8 +537,15 @@ for idx, fpath in enumerate(rfa_files, 1):
 
         # ── Off-template informational (no score impact) ──────────────────────
         try:
-            _lc = fdoc.Settings.Categories.get_Item(BuiltInCategory.OST_Lines)
-            n_line_styles = sum(1 for sc in _lc.SubCategories if not sc.Name.startswith('<')) if _lc else 0
+            from Autodesk.Revit.DB import GraphicsStyle, GraphicsStyleType
+            n_line_styles = sum(
+                1 for gs in FilteredElementCollector(fdoc).OfClass(GraphicsStyle).ToElements()
+                if (gs.GraphicsStyleType == GraphicsStyleType.Projection
+                    and gs.GraphicsStyleCategory is not None
+                    and gs.GraphicsStyleCategory.Parent is not None
+                    and gs.GraphicsStyleCategory.Parent.BuiltInCategory == BuiltInCategory.OST_Lines
+                    and not gs.Name.startswith('<'))
+            )
         except Exception: n_line_styles = 0
         n_filled      = len(list(FilteredElementCollector(fdoc).OfClass(FilledRegion).ToElements()))
         n_text_styles = len(list(FilteredElementCollector(fdoc).OfClass(TextNoteType).ToElements()))
@@ -666,7 +673,7 @@ if scored:
       <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Shared</th>
       <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Formulas</th>
       <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a;border-left:1px solid #2a2a2a">Line Styles</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Dims</th>
+      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Dim Styles</th>
       <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Filled Rgn</th>
       <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Text Styles</th>
     </tr>
@@ -841,7 +848,7 @@ _CSV_MAP = [
     ("n_params",         "Total Params"),
     ("n_formula_params", "Formula Params"),
     ("n_line_styles",    "Line Styles"),
-    ("n_dims",           "Dimensions"),
+    ("n_dims",           "Dimension Styles"),
     ("n_filled",         "Filled Regions"),
     ("n_text_styles",    "Text Styles"),
     ("err",              "Error"),
