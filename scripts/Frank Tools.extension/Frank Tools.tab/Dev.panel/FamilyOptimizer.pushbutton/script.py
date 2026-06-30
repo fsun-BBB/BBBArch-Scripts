@@ -1385,9 +1385,39 @@ def _run_optimizer(target_doc):
             except Exception as _ex:
                 window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80])
         else:
+            # File not on disk — but if the family has instances placed, we can open
+            # it via Revit's EditFamily mechanism (family is already in memory).
+            if row.InstanceCount > 0:
+                try:
+                    fam = doc.GetElement(ElementId(row.FamId))
+                    # Find any instance of this family
+                    inst_found = None
+                    for sym_id in fam.GetFamilySymbolIds():
+                        for _inst in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
+                            try:
+                                if _inst.GetTypeId() == sym_id:
+                                    inst_found = _inst; break
+                            except: pass
+                        if inst_found: break
+                    if inst_found:
+                        # Select the instance and post EditFamily command
+                        uid2 = __revit__.ActiveUIDocument
+                        from System.Collections.Generic import List as CsList2
+                        _sel = CsList2[ElementId]()
+                        _sel.Add(inst_found.Id)
+                        uid2.Selection.SetElementIds(_sel)
+                        from Autodesk.Revit.UI import PostableCommand, RevitCommandId
+                        __revit__.PostCommand(
+                            RevitCommandId.LookupPostableCommandId(PostableCommand.EditFamily))
+                        window.FindName("NestStatus").Text = (
+                            "Opened via Revit EditFamily. Close this window and "
+                            "run the Optimizer again on the now-active family.")
+                        return
+                except Exception as _ef:
+                    pass
             window.FindName("NestStatus").Text = (
-                "Source file not found on disk for '{}' "
-                "({} instance{} placed — family is loaded but .rfa cannot be located).".format(
+                "Source file not found for '{}'. "
+                "Family has {} instance{} but EditFamily failed.".format(
                     row.FamilyName, row.InstanceCount,
                     "s" if row.InstanceCount != 1 else ""))
     window.FindName("BtnOpenNested").Click += do_open_nested
