@@ -1311,34 +1311,34 @@ def _run_optimizer(target_doc):
         window.FindName("BtnOpenNested").IsEnabled = (row is not None)
     window.FindName("NestGrid").SelectionChanged += on_nest_select
 
+    def _walk_limited(start, filename, max_depth=3):
+        """os.walk but stops at max_depth to avoid crawling the whole tree."""
+        for _root, _dirs, _files in os.walk(start):
+            _depth = _root[len(start):].count(os.sep)
+            if _depth >= max_depth:
+                del _dirs[:]
+                continue
+            for _f in _files:
+                if _f.lower() == filename.lower():
+                    return os.path.join(_root, _f)
+        return ""
+
     def do_open_nested(s, e):
         row = window.FindName("NestGrid").SelectedItem
         if row is None: return
         fam_path = ""
+        fam_file = row.FamilyName + ".rfa"
         try:
-            fam = doc.GetElement(ElementId(row.FamId))
-            try: fam_path = fam.PathName or ""
-            except: pass
-            if not fam_path or not os.path.exists(fam_path):
-                fam_file = row.FamilyName + ".rfa"
-                # Build search roots: walk UP the directory tree from the current family
-                # to find the broadest sensible root (stops at Content Conformance or drive root)
-                search_roots = []
-                try:
-                    d = os.path.dirname(doc.PathName)
-                    while d and d != os.path.dirname(d):
-                        search_roots.append(d)
-                        if os.path.basename(d).lower() in ("content conformance","01_bim content","bim content"):
-                            break
-                        d = os.path.dirname(d)
-                except: pass
-                for _sr in search_roots:
-                    for _root, _dirs, _files in os.walk(_sr):
-                        for _f in _files:
-                            if _f.lower() == fam_file.lower():
-                                fam_path = os.path.join(_root, _f); break
-                        if fam_path: break
-                    if fam_path: break
+            # Walk UP from the current family's folder — check each ancestor with
+            # a shallow (3-level) search so sibling category folders are covered
+            # without crawling the entire content library.
+            d = os.path.dirname(doc.PathName) if doc.PathName else ""
+            stop_names = {"content conformance", "01_bim content", "bim content"}
+            while d and d != os.path.dirname(d):
+                fam_path = _walk_limited(d, fam_file, max_depth=3)
+                if fam_path: break
+                if os.path.basename(d).lower() in stop_names: break
+                d = os.path.dirname(d)
         except: pass
         if fam_path and os.path.exists(fam_path):
             try:
