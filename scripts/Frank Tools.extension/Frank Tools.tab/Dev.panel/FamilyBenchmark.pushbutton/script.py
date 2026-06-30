@@ -462,7 +462,7 @@ def _upsert_score_page(name, stage, category, token, r):
         _notion_call("https://api.notion.com/v1/pages/{}".format(pages[0]["id"]),
                      token, "PATCH", {"properties": props})
     else:
-        props["Family Name"] = {"title": [{"text": {"content": name}}]}
+        props["Proposed Name"] = {"title": [{"text": {"content": name}}]}
         props["Stage"]       = {"select": {"name": stage}}
         if category:
             props["Category"] = {"select": {"name": category}}
@@ -891,9 +891,9 @@ elif scored:
                     try: _cat = _pg["properties"]["Category"]["select"]["name"]
                     except Exception: pass
                     _pid = _pg["id"]
-                    # Match by Family Name title
+                    # Match by Proposed Name (title field)
                     try:
-                        _fn = _pg["properties"]["Family Name"]["title"]
+                        _fn = _pg["properties"]["Proposed Name"]["title"]
                         if _fn:
                             _k = _fn[0]["plain_text"].lower()
                             if _k and _k not in _page_map:
@@ -912,7 +912,7 @@ elif scored:
                 # Family not yet in scores DB — create a stub so log can link to it
                 try:
                     _stub = _score_props(r)
-                    _stub["Family Name"] = {"title": [{"text": {"content": r["name"]}}]}
+                    _stub["Proposed Name"] = {"title": [{"text": {"content": r["name"]}}]}
                     _stub["Stage"] = {"select": {"name": RUN_STAGE}}
                     if category:
                         _stub["Category"] = {"select": {"name": category}}
