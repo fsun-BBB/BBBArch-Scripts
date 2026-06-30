@@ -185,6 +185,28 @@ def _collect_req_params():
     return rows
 
 # ── NESTED FAMILIES ───────────────────────────────────────────────────────────
+# ── FOLDER MAPPING ────────────────────────────────────────────────────────────
+# Maps Revit category names → actual folder names used in 1_AUDITED / 0_HOLDING
+# Categories not listed here use the Revit category name directly as the folder name.
+_FOLDER_MAP = {
+    "generic annotations":    "Annotations",
+    "annotation symbols":     "Annotations",
+    "section marks":          "Annotations",
+    "level heads":            "Annotations",
+    "detail items":           "Detail Items",
+    "electrical fixtures":    "Electrical",
+    "ceiling devices":        "Ceiling Devices",
+    "security devices":       "Ceiling Devices",
+    "accessories - bathroom": "Accessories - Bathroom",
+    "amenity-boh bathrooms":  "Amenity-BOH Bathrooms",
+    "kitchens and millwork":  "Casework",
+    "wall finishes":          "Wall Finishes",
+}
+
+def _save_folder(category):
+    """Return the folder name to use in 1_AUDITED / 0_HOLDING for a given Revit category."""
+    return _FOLDER_MAP.get((category or "").lower().strip(), category or "Misc")
+
 # ── BBB NAMING CONVENTION ─────────────────────────────────────────────────────
 # Source: Naming Convention page — B_<CAT>_<Subtype>_<Descriptor>[_<Dim>]...
 _CAT_CODES = {
@@ -1542,9 +1564,10 @@ def _run_optimizer(target_doc):
         if not new_name: return
         new_name = new_name.strip()
 
-        # ── 2. Save destination: 1_AUDITED / Category / name.rfa ─────────────
+        # ── 2. Save destination: 1_AUDITED / folder / name.rfa ───────────────
         cat      = row.Category or ""
-        save_dir = os.path.join(AUDITED_ROOT, cat) if cat else AUDITED_ROOT
+        folder   = _save_folder(cat)
+        save_dir = os.path.join(AUDITED_ROOT, folder)
         if not os.path.exists(save_dir):
             try: os.makedirs(save_dir)
             except Exception as _ex:
