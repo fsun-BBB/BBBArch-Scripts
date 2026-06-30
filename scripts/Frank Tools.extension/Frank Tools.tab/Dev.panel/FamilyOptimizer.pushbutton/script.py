@@ -184,6 +184,98 @@ def _collect_req_params():
     return rows
 
 # ── NESTED FAMILIES ───────────────────────────────────────────────────────────
+# ── BBB NAMING CONVENTION ─────────────────────────────────────────────────────
+# Source: Naming Convention page — B_<CAT>_<Subtype>_<Descriptor>[_<Dim>]...
+_CAT_CODES = {
+    "casework":                 "CASE",
+    "kitchens and millwork":    "CASE",
+    "ceiling devices":          "CDEV",
+    "security devices":         "CDEV",
+    "plumbing fixtures":        "PLMB",
+    "bathroom accessories":     "BATH",
+    "accessories - bathroom":   "BATH",
+    "amenity-boh bathrooms":    "BATH",
+    "bathrooms":                "BATH",
+    "lighting fixtures":        "LGHT",
+    "air terminals":            "AIRT",
+    "electrical":               "ELEC",
+    "electrical fixtures":      "ELEC",
+    "life safety":              "LIFE",
+    "roof drains":              "RDRN",
+    "windows":                  "WNDW",
+    "doors":                    "DOOR",
+    "walls":                    "WALL",
+    "wall finishes":            "WALL",
+    "equipment":                "EQPT",
+    "furniture":                "FURN",
+    "site":                     "SITE",
+    "annotations":              "ANNO",
+    "annotation symbols":       "ANNO",
+    "generic annotations":      "ANNO",
+    "section marks":            "ANNO",
+    "level heads":              "ANNO",
+    "detail items":             "DETL",
+    "vertical circulation":     "VERT",
+    "unit families":            "UNIT",
+    "parking":                  "PARK",
+    "sprinkler":                "SPKR",
+    "fire protection":          "FIRE",
+    "amenity families":         "AMEN",
+}
+
+_WORD_MAP = {
+    "w":   "With",
+    "w/":  "With",
+    "wo":  "Without",
+    "wo/": "Without",
+    "hdw": "Hdw",
+    "nts": "NTS",
+}
+
+def _generate_bbb_name(family_name, category):
+    """Generate a BBB-convention name: B_<CAT>_<Subtype>_<Descriptor>"""
+    import re as _re
+    code = _CAT_CODES.get((category or "").lower().strip(), "MISC")
+
+    def to_cc(s):
+        words = _re.split(r'[\s_]+', s.strip())
+        out = []
+        for w in words:
+            if not w: continue
+            wl = w.lower().rstrip('/')
+            if wl in _WORD_MAP:
+                out.append(_WORD_MAP[wl])
+            elif w.isupper() and 1 < len(w) <= 5:
+                out.append(w)          # keep acronyms: LED, GFI, etc.
+            else:
+                out.append(w[0].upper() + w[1:].lower() if len(w) > 1 else w.upper())
+        return "".join(out)
+
+    name = family_name or ""
+    # Strip existing B_XXXX_ prefix if already partially named
+    name = _re.sub(r'^B_[A-Z]{3,5}_', '', name)
+
+    # Split on hyphen/dash → left = subtype group, right = descriptor
+    parts = _re.split(r'\s*[-–—]\s*', name, maxsplit=1)
+
+    if len(parts) == 2:
+        subtype    = to_cc(parts[0])
+        descriptor = to_cc(parts[1])
+        return u"B_{}_{}_{}" .format(code, subtype, descriptor)
+    else:
+        # No hyphen — first word(s) = subtype, last word(s) = descriptor
+        words = [w for w in _re.split(r'\s+', name.strip()) if w]
+        if not words:
+            return u"B_{}_Family".format(code)
+        if len(words) == 1:
+            return u"B_{}_{}".format(code, to_cc(words[0]))
+        if len(words) == 2:
+            return u"B_{}_{}_{}".format(code, to_cc(words[0]), to_cc(words[1]))
+        # 3+ words: join all but last as subtype, last as descriptor
+        subtype    = to_cc(" ".join(words[:-1]))
+        descriptor = to_cc(words[-1])
+        return u"B_{}_{}_{}".format(code, subtype, descriptor)
+
 def _is_user_family(fam):
     """Returns True only for user-loadable families — excludes system/Analytical/Revit Link entries."""
     try:
@@ -1438,12 +1530,14 @@ def _run_optimizer(target_doc):
         row = window.FindName("NestGrid").SelectedItem
         if row is None: return
 
-        # Ask user for BBB name (pre-fill with current name)
+        # Auto-generate BBB name from naming convention, let user confirm
         from pyrevit import forms as _pf
+        _proposed = _generate_bbb_name(row.FamilyName, row.Category or "")
         new_name = _pf.ask_for_string(
-            prompt="Enter the BBB name for this family (without .rfa):",
-            title="Save to 0_HOLDING",
-            default=row.FamilyName)
+            prompt=u"Proposed BBB name (edit if needed, no .rfa):\n\nOriginal : {}\nCategory : {}".format(
+                row.FamilyName, row.Category or "—"),
+            title=u"Rename to BBB Convention — Save to 0_HOLDING",
+            default=_proposed)
         if not new_name: return
         new_name = new_name.strip()
 
