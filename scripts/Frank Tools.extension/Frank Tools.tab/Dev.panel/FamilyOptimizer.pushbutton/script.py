@@ -1309,6 +1309,21 @@ def _run_optimizer(target_doc):
     def on_nest_select(s, e):
         row = window.FindName("NestGrid").SelectedItem
         window.FindName("BtnOpenNested").IsEnabled = (row is not None)
+        if row is None or row.InstanceCount == 0: return
+        try:
+            uid = __revit__.ActiveUIDocument
+            if uid is None or not uid.Document.Equals(doc): return
+            fam = doc.GetElement(ElementId(row.FamId))
+            from System.Collections.Generic import List as CsList
+            ids = CsList[ElementId]()
+            for sym_id in fam.GetFamilySymbolIds():
+                for inst in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
+                    try:
+                        if inst.GetTypeId() == sym_id: ids.Add(inst.Id)
+                    except: pass
+            if ids.Count > 0:
+                uid.Selection.SetElementIds(ids)
+        except: pass
     window.FindName("NestGrid").SelectionChanged += on_nest_select
 
     def _walk_limited(start, filename, max_depth=3):
