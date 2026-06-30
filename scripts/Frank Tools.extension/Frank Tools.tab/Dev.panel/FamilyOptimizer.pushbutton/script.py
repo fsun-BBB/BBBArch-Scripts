@@ -1628,26 +1628,10 @@ def _run_optimizer(target_doc):
             except: pass
 
         if not nested_doc:
-            # Last resort: let user locate the file manually
-            from Microsoft.Win32 import OpenFileDialog as _OFD3
-            _dlg3 = _OFD3()
-            _dlg3.Title  = u"Locate source file for '{}'".format(row.FamilyName)
-            _dlg3.Filter = "Revit Family (*.rfa)|*.rfa"
-            _dlg3.FileName = row.FamilyName + ".rfa"
-            try: _dlg3.InitialDirectory = HOLDING_ROOT
-            except: pass
-            if not _dlg3.ShowDialog():
-                window.FindName("NestStatus").Text = "Save cancelled."
-                return
-            try:
-                _uid_m = __revit__.OpenAndActivateDocument(_dlg3.FileName)
-                if _uid_m: nested_doc = _uid_m.Document
-            except Exception as _ex:
-                window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80])
-                return
-            if not nested_doc:
-                window.FindName("NestStatus").Text = "Could not open selected file."
-                return
+            window.FindName("NestStatus").Text = (
+                u"'{}' not found in 0_HOLDING and has 0 instances. "
+                u"Place one instance in this family first, then Save again.".format(row.FamilyName))
+            return
 
         # ── 5. SaveAs to 1_AUDITED / Category / BBBName.rfa ──────────────────
         try:
