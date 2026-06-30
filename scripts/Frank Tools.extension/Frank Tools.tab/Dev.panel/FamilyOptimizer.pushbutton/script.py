@@ -503,6 +503,7 @@ XAML = """
               <TextBlock x:Name="ScoreGain" FontSize="26" FontWeight="Bold" FontFamily="Consolas" Foreground="#58A6FF" HorizontalAlignment="Center"/>
             </StackPanel>
           </Border>
+          <Button x:Name="BtnOpenOther" Content="Open Other..." VerticalAlignment="Center" Margin="0,0,8,0"/>
           <Button x:Name="BtnClose" Content="Close" VerticalAlignment="Center"/>
         </StackPanel>
       </Grid>
@@ -1360,7 +1361,23 @@ def _run_optimizer(target_doc):
     window.FindName("BtnGA").Click         += geo_all
     window.FindName("BtnGC").Click         += geo_clear
     window.FindName("BtnGD").Click         += geo_delete
-    window.FindName("BtnClose").Click      += lambda s,e: window.Close()
+    def do_open_other(s, e):
+        from Microsoft.Win32 import OpenFileDialog as _OFD
+        _dlg = _OFD()
+        _dlg.Title  = "Select a Revit Family to Optimize"
+        _dlg.Filter = "Revit Family (*.rfa)|*.rfa"
+        _dlg.DefaultExt = ".rfa"
+        if _dlg.ShowDialog():
+            try:
+                _uid = __revit__.OpenAndActivateDocument(_dlg.FileName)
+                _nd  = _uid.Document if _uid else None
+                if _nd and _nd.IsFamilyDocument:
+                    _next[0] = _nd
+                    window.Close()
+            except Exception as _ex:
+                pass
+    window.FindName("BtnOpenOther").Click   += do_open_other
+    window.FindName("BtnClose").Click       += lambda s,e: window.Close()
     def _refresh_btn_states():
         _,_,_,ut2,ui2,ush2=_collect_params()
         cad_now=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
