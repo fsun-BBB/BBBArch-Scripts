@@ -27,7 +27,8 @@ from System.Collections.ObjectModel import ObservableCollection
 
 doc = __revit__.ActiveUIDocument.Document
 
-HOLDING_ROOT = r"N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\0_HOLDING"
+HOLDING_ROOT  = r"N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\0_HOLDING"
+AUDITED_ROOT  = r"N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\1_AUDITED"
 
 REQUIRED_PARAMS = {
     "Manufacturer","Model","OmniClass Number","OmniClass Title",
@@ -1530,85 +1531,114 @@ def _run_optimizer(target_doc):
         row = window.FindName("NestGrid").SelectedItem
         if row is None: return
 
-        # Auto-generate BBB name from naming convention, let user confirm
+        # ── 1. Auto-generate BBB name, let user confirm ───────────────────────
         from pyrevit import forms as _pf
         _proposed = _generate_bbb_name(row.FamilyName, row.Category or "")
         new_name = _pf.ask_for_string(
             prompt=u"Proposed BBB name (edit if needed, no .rfa):\n\nOriginal : {}\nCategory : {}".format(
                 row.FamilyName, row.Category or "—"),
-            title=u"Rename to BBB Convention — Save to 0_HOLDING",
+            title=u"Rename to BBB Convention — Save to 1_AUDITED",
             default=_proposed)
         if not new_name: return
         new_name = new_name.strip()
 
-        # Determine save subfolder from category
-        cat = row.Category or ""
-        save_dir = os.path.join(HOLDING_ROOT, cat) if cat else HOLDING_ROOT
+        # ── 2. Save destination: 1_AUDITED / Category / name.rfa ─────────────
+        cat      = row.Category or ""
+        save_dir = os.path.join(AUDITED_ROOT, cat) if cat else AUDITED_ROOT
         if not os.path.exists(save_dir):
             try: os.makedirs(save_dir)
             except Exception as _ex:
                 window.FindName("NestStatus").Text = "Cannot create folder: {}".format(str(_ex)[:80])
                 return
-
         save_path = os.path.join(save_dir, new_name + ".rfa")
         if os.path.exists(save_path):
-            if not _confirm("Overwrite?", "{} already exists.\nOverwrite?".format(new_name + ".rfa")):
+            if not _confirm("Overwrite?", "{} already exists in 1_AUDITED.\nOverwrite?".format(new_name + ".rfa")):
                 return
 
-        # Get the nested family's document via UIDocument.EditFamily (Revit 2024+)
-        # or via PostableCommand + polling (older Revit)
-        nested_doc = None
+        # ── 3. Find the source .rfa to open (same logic as Open in Optimizer) ─
+        fam_file = row.FamilyName + ".rfa"
+        src_path = ""
         try:
-            fam = doc.GetElement(ElementId(row.FamId))
-            uid3 = __revit__.ActiveUIDocument
-            # Try synchronous EditFamily (Revit 2024+)
+            cur_dir = os.path.dirname(doc.PathName) if doc.PathName else ""
+            stage   = os.path.dirname(cur_dir)
+            candidates = [
+                os.path.join(HOLDING_ROOT, cat, fam_file),
+                os.path.join(HOLDING_ROOT, fam_file),
+                os.path.join(cur_dir, fam_file),
+                os.path.join(stage, cat, fam_file),
+                os.path.join(stage, fam_file),
+            ]
             try:
-                nested_uid = uid3.EditFamily(fam)
-                if nested_uid: nested_doc = nested_uid.Document
+                for _sub in os.listdir(HOLDING_ROOT):
+                    candidates.append(os.path.join(HOLDING_ROOT, _sub, fam_file))
+            except: pass
+            try:
+                for _sub in os.listdir(stage):
+                    candidates.append(os.path.join(stage, _sub, fam_file))
+            except: pass
+            for _p in candidates:
+                if os.path.exists(_p):
+                    src_path = _p; break
+        except: pass
+
+        # ── 4. Get the family document ────────────────────────────────────────
+        nested_doc = None
+
+        # A: already open?
+        for _d in __revit__.Application.Documents:
+            try:
+                if _d.IsFamilyDocument and _d.Title.lower() == row.FamilyName.lower():
+                    nested_doc = _d; break
             except: pass
 
-            # Fallback: family already open in app.Documents?
-            if not nested_doc:
-                for _d in __revit__.Application.Documents:
-                    if _d.IsFamilyDocument and _d.Title.lower() == row.FamilyName.lower():
-                        nested_doc = _d; break
+        # B: open from disk
+        if not nested_doc and src_path:
+            try:
+                _uid_s = __revit__.OpenAndActivateDocument(src_path)
+                if _uid_s: nested_doc = _uid_s.Document
+            except: pass
 
-            # Fallback: PostableCommand + poll
-            if not nested_doc and row.InstanceCount > 0:
-                from System.Collections.Generic import List as CsList3
-                _sel3 = CsList3[ElementId]()
+        # C: no file — try PostCommand if instances exist
+        if not nested_doc and row.InstanceCount > 0:
+            try:
+                fam = doc.GetElement(ElementId(row.FamId))
+                uid3 = __revit__.ActiveUIDocument
+                from System.Collections.Generic import List as _CL3
+                _sel3 = _CL3[ElementId]()
                 for sym_id in fam.GetFamilySymbolIds():
                     for _inst in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
                         try:
-                            if _inst.GetTypeId() == sym_id: _sel3.Add(_inst.Id); break
+                            if _inst.GetTypeId() == sym_id:
+                                _sel3.Add(_inst.Id); break
                         except: pass
                     if _sel3.Count: break
                 if _sel3.Count:
                     uid3.Selection.SetElementIds(_sel3)
                     from Autodesk.Revit.UI import PostableCommand, RevitCommandId
                     __revit__.PostCommand(RevitCommandId.LookupPostableCommandId(PostableCommand.EditFamily))
-                    import time as _time
+                    import time as _tm
                     for _ in range(20):
-                        _time.sleep(0.3)
+                        _tm.sleep(0.3)
                         for _d in __revit__.Application.Documents:
-                            if _d.IsFamilyDocument and _d.Title.lower() == row.FamilyName.lower():
-                                nested_doc = _d; break
+                            try:
+                                if _d.IsFamilyDocument and _d.Title.lower() == row.FamilyName.lower():
+                                    nested_doc = _d; break
+                            except: pass
                         if nested_doc: break
-        except Exception as _ex:
-            window.FindName("NestStatus").Text = "Error getting family: {}".format(str(_ex)[:80])
-            return
+            except: pass
 
         if not nested_doc:
-            window.FindName("NestStatus").Text = "Could not open '{}' — no instances to trigger EditFamily.".format(row.FamilyName)
+            window.FindName("NestStatus").Text = (
+                "Cannot save — source file not found and no instances to extract from.")
             return
 
-        # Save to 0_HOLDING
+        # ── 5. SaveAs to 1_AUDITED / Category / BBBName.rfa ──────────────────
         try:
             from Autodesk.Revit.DB import SaveAsOptions
             opts = SaveAsOptions()
             opts.OverwriteExistingFile = True
             nested_doc.SaveAs(save_path, opts)
-            window.FindName("NestStatus").Text = u"Saved: {}".format(os.path.basename(save_path))
+            window.FindName("NestStatus").Text = u"Saved to 1_AUDITED: {}".format(os.path.basename(save_path))
         except Exception as _ex:
             window.FindName("NestStatus").Text = "Save failed: {}".format(str(_ex)[:80])
 
