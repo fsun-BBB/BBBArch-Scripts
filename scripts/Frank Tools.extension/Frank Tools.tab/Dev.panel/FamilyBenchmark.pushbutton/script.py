@@ -82,6 +82,41 @@ def _get_stage(path):
         return "3_Cleaned"
     return "Others"
 
+_PREFIX_CATEGORY = {
+    "AIRT": "Air Terminals",
+    "PLMB": "Plumbing Fixtures",
+    "LGHT": "Lighting Fixtures",
+    "ELEC": "Electrical",
+    "SPKR": "Sprinkler",
+    "FIRE": "Fire Protection",
+    "LIFE": "Life Safety",
+    "CASE": "Casework",
+    "EQPT": "Equipment",
+    "BATH": "Bathrooms",
+    "CDEV": "Ceiling Devices",
+    "DOOR": "Doors",
+    "WIND": "Windows",
+    "FURN": "Furniture",
+    "SITE": "Site",
+    "PRKG": "Parking",
+    "SECU": "Security Devices",
+    "ANNO": "Annotations",
+    "KITC": "Kitchens",
+    "MLWK": "Kitchens and Millwork",
+    "WALL": "Wall Finishes",
+    "AMTY": "Amenity Families",
+    "UNIT": "Unit Families",
+    "ACCB": "Accessories - Bathroom",
+}
+
+def _infer_category(name):
+    """Infer Notion category from family name prefix e.g. B_AIRT_... → Air Terminals."""
+    parts = name.upper().split("_")
+    for part in parts:
+        if part in _PREFIX_CATEGORY:
+            return _PREFIX_CATEGORY[part]
+    return ""
+
 _CONFORMANCE_ROOT = os.path.dirname(GP_ROOT)   # N:\...\Content Conformance
 _token_candidates = [
     os.path.join(ROOT,              "notion_token.txt"),
@@ -829,7 +864,7 @@ if not TOKEN_FILE:
 elif scored:
     try:
         with open(TOKEN_FILE, "r") as _f:
-            token = _f.read().strip()
+            token = _f.read().strip().lstrip(u'﻿')
 
         run_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -866,16 +901,20 @@ elif scored:
         n_log = 0; n_log_fail = 0
         for r in scored:
             pid, category = _page_map.get(r["name"].lower(), (None, ""))
+            if not category:
+                category = _infer_category(r["name"])
             if pid is None:
                 # Family not yet in scores DB — create a stub so log can link to it
                 try:
                     _stub = _score_props(r)
                     _stub["Family Name"] = {"title": [{"text": {"content": r["name"]}}]}
                     _stub["Stage"] = {"select": {"name": RUN_STAGE}}
+                    if category:
+                        _stub["Category"] = {"select": {"name": category}}
                     _new = _notion_call("https://api.notion.com/v1/pages", token, "POST",
                                        {"parent": {"database_id": DATABASE_ID}, "properties": _stub})
                     pid = _new.get("id")
-                    _page_map[r["name"].lower()] = (pid, "")
+                    _page_map[r["name"].lower()] = (pid, category)
                 except Exception: pass
             if pid:
                 try:
@@ -921,6 +960,7 @@ elif scored:
                 n_saved = 0; n_save_fail = 0
                 for r in scored:
                     _, cat = _page_map.get(r["name"].lower(), (None, ""))
+                    if not cat: cat = _infer_category(r["name"])
                     try:
                         _upsert_score_page(r["name"], RUN_STAGE, cat, token, r)
                         n_saved += 1
