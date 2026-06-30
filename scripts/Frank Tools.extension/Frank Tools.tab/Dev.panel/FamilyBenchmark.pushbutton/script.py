@@ -453,7 +453,7 @@ def _upsert_score_page(name, stage, category, token, r):
         "https://api.notion.com/v1/databases/{}/query".format(DATABASE_ID),
         token, "POST",
         {"filter": {"and": [
-            {"property": "Family Name", "title":  {"equals": name}},
+            {"property": "Proposed Name", "title":  {"equals": name}},
             {"property": "Stage",       "select": {"equals": stage}},
         ]}, "page_size": 1})
     pages = q.get("results", [])
