@@ -875,7 +875,8 @@ elif scored:
             '<div style="color:#aaa;font-size:11px;font-weight:700;margin-bottom:6px">'
             '&#128196; Writing log rows (stage: {})...</div>'.format(RUN_STAGE))
 
-        # Build a quick name→(page_id, category) map from the Scores DB for log linking
+        # Build name→(page_id, category) map — match by Proposed Name first (BBB code
+        # name like "B_PLMB_Shower Stall"), then fall back to Family Name title.
         _page_map = {}
         _cursor = None
         while True:
@@ -886,14 +887,26 @@ elif scored:
                 token, "POST", _body)
             for _pg in _resp.get("results", []):
                 try:
-                    _rt = _pg["properties"]["Family Name"]["title"]
-                    if _rt:
-                        _cat = ""
-                        try: _cat = _pg["properties"]["Category"]["select"]["name"]
-                        except Exception: pass
-                        _key = _rt[0]["plain_text"].lower()
-                        if _key not in _page_map:
-                            _page_map[_key] = (_pg["id"], _cat)
+                    _cat = ""
+                    try: _cat = _pg["properties"]["Category"]["select"]["name"]
+                    except Exception: pass
+                    _pid = _pg["id"]
+                    # Primary key: Proposed Name (BBB code name matches file name)
+                    try:
+                        _pn = _pg["properties"]["Proposed Name"]["rich_text"]
+                        if _pn:
+                            _k = _pn[0]["plain_text"].lower()
+                            if _k and _k not in _page_map:
+                                _page_map[_k] = (_pid, _cat)
+                    except Exception: pass
+                    # Fallback key: Family Name title
+                    try:
+                        _fn = _pg["properties"]["Family Name"]["title"]
+                        if _fn:
+                            _k = _fn[0]["plain_text"].lower()
+                            if _k and _k not in _page_map:
+                                _page_map[_k] = (_pid, _cat)
+                    except Exception: pass
                 except Exception: pass
             if _resp.get("has_more"): _cursor = _resp["next_cursor"]
             else: break
@@ -907,7 +920,8 @@ elif scored:
                 # Family not yet in scores DB — create a stub so log can link to it
                 try:
                     _stub = _score_props(r)
-                    _stub["Family Name"] = {"title": [{"text": {"content": r["name"]}}]}
+                    _stub["Family Name"]   = {"title":     [{"text": {"content": r["name"]}}]}
+                    _stub["Proposed Name"] = {"rich_text": [{"type": "text", "text": {"content": r["name"]}}]}
                     _stub["Stage"] = {"select": {"name": RUN_STAGE}}
                     if category:
                         _stub["Category"] = {"select": {"name": category}}
