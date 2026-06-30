@@ -1330,7 +1330,10 @@ def _run_optimizer(target_doc):
         row = window.FindName("NestGrid").SelectedItem
         if row is None: return
         fam_path = ""
-        # 1. Try PathName directly (works for families that retain their source path)
+        fam_file = row.FamilyName + ".rfa"
+        cat       = row.Category or ""
+
+        # 1. Try PathName (instant when families retain source path)
         try:
             fam = doc.GetElement(ElementId(row.FamId))
             try:
@@ -1338,17 +1341,37 @@ def _run_optimizer(target_doc):
                 if p and os.path.exists(p): fam_path = p
             except: pass
         except: pass
-        # 2. If not found, open a file picker pre-filled with the family name
-        if not fam_path:
-            from Microsoft.Win32 import OpenFileDialog as _OFD2
-            _dlg2 = _OFD2()
-            _dlg2.Title  = u"Locate '{}.rfa'".format(row.FamilyName)
-            _dlg2.Filter = "Revit Family (*.rfa)|*.rfa"
-            _dlg2.FileName = row.FamilyName + ".rfa"
-            try: _dlg2.InitialDirectory = os.path.dirname(doc.PathName)
+
+        # 2. Direct path guesses — os.listdir + os.path.exists only (no walking)
+        if not fam_path and doc.PathName:
+            try:
+                cur_dir = os.path.dirname(doc.PathName)   # e.g. ..\Air Terminals
+                stage   = os.path.dirname(cur_dir)         # e.g. ..\2_GUARDIAN PASS
+                conf    = os.path.dirname(stage)           # e.g. ..\Content Conformance
+
+                candidates = [
+                    os.path.join(cur_dir, fam_file),        # same folder as current family
+                    os.path.join(stage,   cat, fam_file),   # stage / Category / name
+                    os.path.join(stage,   fam_file),        # directly in stage root
+                    os.path.join(conf,    cat, fam_file),   # conf / Category / name
+                ]
+                # Check every direct subfolder of stage (one listdir call, no recursion)
+                try:
+                    for _sub in os.listdir(stage):
+                        candidates.append(os.path.join(stage, _sub, fam_file))
+                except: pass
+                # Check every direct subfolder of conf (covers sibling stages)
+                try:
+                    for _sub in os.listdir(conf):
+                        candidates.append(os.path.join(conf, _sub, cat, fam_file))
+                        candidates.append(os.path.join(conf, _sub, fam_file))
+                except: pass
+
+                for _p in candidates:
+                    if os.path.exists(_p):
+                        fam_path = _p; break
             except: pass
-            if not _dlg2.ShowDialog(): return
-            fam_path = _dlg2.FileName
+
         if fam_path and os.path.exists(fam_path):
             try:
                 _uid = __revit__.OpenAndActivateDocument(fam_path)
@@ -1361,6 +1384,8 @@ def _run_optimizer(target_doc):
                     return
             except Exception as _ex:
                 window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80])
+        else:
+            window.FindName("NestStatus").Text = "Not found: {}".format(fam_file)
     window.FindName("BtnOpenNested").Click += do_open_nested
 
     window.FindName("BtnDelSubcat").Click  += do_del_subcat
