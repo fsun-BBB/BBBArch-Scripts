@@ -184,6 +184,12 @@ def _collect_req_params():
     return rows
 
 # ── NESTED FAMILIES ───────────────────────────────────────────────────────────
+def _is_user_family(fam):
+    """Returns True only for user-loadable families — excludes system/Analytical/Revit Link entries."""
+    try:
+        return bool(fam.IsEditable)
+    except: return False
+
 def _collect_nested():
     inst_by_type = {}
     for inst in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
@@ -194,10 +200,7 @@ def _collect_nested():
     rows = []
     for fam in FilteredElementCollector(doc).OfClass(Family).ToElements():
         try:
-            if not fam.Name: continue              # skip blank-name system entries
-            try:
-                if not fam.IsEditable: continue    # skip non-user families (Analytical Links etc.)
-            except: pass
+            if not fam.Name or not _is_user_family(fam): continue
             cat = ""
             try: cat = fam.FamilyCategory.Name if fam.FamilyCategory else ""
             except: pass
@@ -891,7 +894,8 @@ def _run_optimizer(target_doc):
         from Autodesk.Revit.DB import RasterImage
         n_img=len(list(FilteredElementCollector(doc).OfClass(RasterImage).ToElements()))
     except: n_img=0
-    n_nest=len(list(FilteredElementCollector(doc).OfClass(Family).ToElements()))
+    n_nest=sum(1 for f in FilteredElementCollector(doc).OfClass(Family).ToElements()
+               if f.Name and _is_user_family(f))
     n_grp=len(list(FilteredElementCollector(doc).OfClass(Group).ToElements()))
     n_s,n_f,n_e=_total_geom()
     n_tp,n_sh,n_fp,ut,ui,ush=_collect_params()
