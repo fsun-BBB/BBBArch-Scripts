@@ -1326,50 +1326,41 @@ def _run_optimizer(target_doc):
         except: pass
     window.FindName("NestGrid").SelectionChanged += on_nest_select
 
-    def _walk_limited(start, filename, max_depth=3):
-        """os.walk but stops at max_depth to avoid crawling the whole tree."""
-        for _root, _dirs, _files in os.walk(start):
-            _depth = _root[len(start):].count(os.sep)
-            if _depth >= max_depth:
-                del _dirs[:]
-                continue
-            for _f in _files:
-                if _f.lower() == filename.lower():
-                    return os.path.join(_root, _f)
-        return ""
-
     def do_open_nested(s, e):
         row = window.FindName("NestGrid").SelectedItem
         if row is None: return
         fam_path = ""
-        fam_file = row.FamilyName + ".rfa"
+        # 1. Try PathName directly (works for families that retain their source path)
         try:
-            # Walk UP from the current family's folder — check each ancestor with
-            # a shallow (3-level) search so sibling category folders are covered
-            # without crawling the entire content library.
-            d = os.path.dirname(doc.PathName) if doc.PathName else ""
-            stop_names = {"content conformance", "01_bim content", "bim content"}
-            while d and d != os.path.dirname(d):
-                fam_path = _walk_limited(d, fam_file, max_depth=3)
-                if fam_path: break
-                if os.path.basename(d).lower() in stop_names: break
-                d = os.path.dirname(d)
+            fam = doc.GetElement(ElementId(row.FamId))
+            try:
+                p = fam.PathName
+                if p and os.path.exists(p): fam_path = p
+            except: pass
         except: pass
+        # 2. If not found, open a file picker pre-filled with the family name
+        if not fam_path:
+            from Microsoft.Win32 import OpenFileDialog as _OFD2
+            _dlg2 = _OFD2()
+            _dlg2.Title  = u"Locate '{}.rfa'".format(row.FamilyName)
+            _dlg2.Filter = "Revit Family (*.rfa)|*.rfa"
+            _dlg2.FileName = row.FamilyName + ".rfa"
+            try: _dlg2.InitialDirectory = os.path.dirname(doc.PathName)
+            except: pass
+            if not _dlg2.ShowDialog(): return
+            fam_path = _dlg2.FileName
         if fam_path and os.path.exists(fam_path):
             try:
                 _uid = __revit__.OpenAndActivateDocument(fam_path)
                 nested = _uid.Document if _uid else None
                 if nested and nested.IsFamilyDocument:
                     global doc
-                    _saved_doc = doc        # remember parent doc
-                    _run_optimizer(nested)  # opens on top; blocks until nested window closes
-                    doc = _saved_doc        # restore parent doc when user returns
+                    _saved_doc = doc
+                    _run_optimizer(nested)
+                    doc = _saved_doc
                     return
             except Exception as _ex:
                 window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80])
-                return
-        else:
-            window.FindName("NestStatus").Text = "Not found: '{}' — check the family is in the same content tree.".format(row.FamilyName)
     window.FindName("BtnOpenNested").Click += do_open_nested
 
     window.FindName("BtnDelSubcat").Click  += do_del_subcat
