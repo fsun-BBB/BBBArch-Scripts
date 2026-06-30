@@ -1584,40 +1584,37 @@ def _run_optimizer(target_doc):
         # ── 4. Get the family document ────────────────────────────────────────
         nested_doc = None
 
-        # A: already open?
+        # A: already open in app.Documents?
         for _d in __revit__.Application.Documents:
             try:
                 if _d.IsFamilyDocument and _d.Title.lower() == row.FamilyName.lower():
                     nested_doc = _d; break
             except: pass
 
-        # B: open from disk
+        # B: open from disk if source file found
         if not nested_doc and src_path:
             try:
                 _uid_s = __revit__.OpenAndActivateDocument(src_path)
                 if _uid_s: nested_doc = _uid_s.Document
             except: pass
 
-        # C: no file — try PostCommand if instances exist
-        if not nested_doc and row.InstanceCount > 0:
+        # C: select FamilySymbol + PostCommand.EditFamily
+        #    (mirrors Project Browser right-click → Edit; works without instances)
+        if not nested_doc:
             try:
-                fam = doc.GetElement(ElementId(row.FamId))
-                uid3 = __revit__.ActiveUIDocument
-                from System.Collections.Generic import List as _CL3
-                _sel3 = _CL3[ElementId]()
-                for sym_id in fam.GetFamilySymbolIds():
-                    for _inst in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
-                        try:
-                            if _inst.GetTypeId() == sym_id:
-                                _sel3.Add(_inst.Id); break
-                        except: pass
-                    if _sel3.Count: break
-                if _sel3.Count:
+                fam   = doc.GetElement(ElementId(row.FamId))
+                uid3  = __revit__.ActiveUIDocument
+                sym_ids = list(fam.GetFamilySymbolIds())
+                if sym_ids:
+                    from System.Collections.Generic import List as _CL3
+                    _sel3 = _CL3[ElementId]()
+                    _sel3.Add(sym_ids[0])   # select the type, not an instance
                     uid3.Selection.SetElementIds(_sel3)
                     from Autodesk.Revit.UI import PostableCommand, RevitCommandId
-                    __revit__.PostCommand(RevitCommandId.LookupPostableCommandId(PostableCommand.EditFamily))
+                    __revit__.PostCommand(
+                        RevitCommandId.LookupPostableCommandId(PostableCommand.EditFamily))
                     import time as _tm
-                    for _ in range(20):
+                    for _ in range(30):     # up to 9 seconds
                         _tm.sleep(0.3)
                         for _d in __revit__.Application.Documents:
                             try:
@@ -1629,8 +1626,9 @@ def _run_optimizer(target_doc):
 
         if not nested_doc:
             window.FindName("NestStatus").Text = (
-                u"'{}' not found in 0_HOLDING and has 0 instances. "
-                u"Place one instance in this family first, then Save again.".format(row.FamilyName))
+                u"Could not extract '{}'. "
+                u"PostCommand.EditFamily may need a placed instance on this Revit version. "
+                u"Place one and try again.".format(row.FamilyName))
             return
 
         # ── 5. SaveAs to 1_AUDITED / Category / BBBName.rfa ──────────────────
