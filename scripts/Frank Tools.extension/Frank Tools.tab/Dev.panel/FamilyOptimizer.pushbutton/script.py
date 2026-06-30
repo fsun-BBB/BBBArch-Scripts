@@ -194,6 +194,10 @@ def _collect_nested():
     rows = []
     for fam in FilteredElementCollector(doc).OfClass(Family).ToElements():
         try:
+            if not fam.Name: continue              # skip blank-name system entries
+            try:
+                if not fam.IsEditable: continue    # skip non-user families (Analytical Links etc.)
+            except: pass
             cat = ""
             try: cat = fam.FamilyCategory.Name if fam.FamilyCategory else ""
             except: pass
@@ -709,7 +713,8 @@ XAML = """
             </StackPanel>
             <Border Padding="28,10" Background="#FAFAFA" BorderBrush="#E8EBEF" BorderThickness="0,1,0,0">
               <StackPanel Orientation="Horizontal">
-                <Button x:Name="BtnOpenNested" Content="Open in Optimizer" Style="{StaticResource ActBtn}" IsEnabled="False" Margin="0,0,8,0"/>
+                <Button x:Name="BtnOpenNested"   Content="Open in Optimizer"    Style="{StaticResource ActBtn}"    IsEnabled="False" Margin="0,0,8,0"/>
+                <Button x:Name="BtnSaveNested"   Content="Save to 0_HOLDING"    Style="{StaticResource ActBtn}"    IsEnabled="False" Margin="0,0,8,0"/>
                 <Button x:Name="BtnPurgeNest" Content="Purge Unplaced (0 instances)" Style="{StaticResource DangerBtn}" Margin="0,0,12,0"/>
                 <TextBlock x:Name="NestStatus" Foreground="#16803A" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
                 <Button x:Name="BtnUndoNest" Content="&#8617; Undo" Visibility="Collapsed" Background="#F3EEFF" Foreground="#7C3AED" BorderBrush="#C4A6FF" Padding="8,4"/>
@@ -1311,6 +1316,7 @@ def _run_optimizer(target_doc):
     def on_nest_select(s, e):
         row = window.FindName("NestGrid").SelectedItem
         window.FindName("BtnOpenNested").IsEnabled = (row is not None)
+        window.FindName("BtnSaveNested").IsEnabled = (row is not None)
         if row is None or row.InstanceCount == 0: return
         try:
             uid = __revit__.ActiveUIDocument
@@ -1423,6 +1429,92 @@ def _run_optimizer(target_doc):
                     row.FamilyName, row.InstanceCount,
                     "s" if row.InstanceCount != 1 else ""))
     window.FindName("BtnOpenNested").Click += do_open_nested
+
+    def do_save_nested(s, e):
+        row = window.FindName("NestGrid").SelectedItem
+        if row is None: return
+
+        # Ask user for BBB name (pre-fill with current name)
+        from pyrevit import forms as _pf
+        new_name = _pf.ask_for_string(
+            prompt="Enter the BBB name for this family (without .rfa):",
+            title="Save to 0_HOLDING",
+            default=row.FamilyName)
+        if not new_name: return
+        new_name = new_name.strip()
+
+        # Determine save subfolder from category
+        cat = row.Category or ""
+        save_dir = os.path.join(HOLDING_ROOT, cat) if cat else HOLDING_ROOT
+        if not os.path.exists(save_dir):
+            try: os.makedirs(save_dir)
+            except Exception as _ex:
+                window.FindName("NestStatus").Text = "Cannot create folder: {}".format(str(_ex)[:80])
+                return
+
+        save_path = os.path.join(save_dir, new_name + ".rfa")
+        if os.path.exists(save_path):
+            if not _confirm("Overwrite?", "{} already exists.\nOverwrite?".format(new_name + ".rfa")):
+                return
+
+        # Get the nested family's document via UIDocument.EditFamily (Revit 2024+)
+        # or via PostableCommand + polling (older Revit)
+        nested_doc = None
+        try:
+            fam = doc.GetElement(ElementId(row.FamId))
+            uid3 = __revit__.ActiveUIDocument
+            # Try synchronous EditFamily (Revit 2024+)
+            try:
+                nested_uid = uid3.EditFamily(fam)
+                if nested_uid: nested_doc = nested_uid.Document
+            except: pass
+
+            # Fallback: family already open in app.Documents?
+            if not nested_doc:
+                for _d in __revit__.Application.Documents:
+                    if _d.IsFamilyDocument and _d.Title.lower() == row.FamilyName.lower():
+                        nested_doc = _d; break
+
+            # Fallback: PostableCommand + poll
+            if not nested_doc and row.InstanceCount > 0:
+                from System.Collections.Generic import List as CsList3
+                _sel3 = CsList3[ElementId]()
+                for sym_id in fam.GetFamilySymbolIds():
+                    for _inst in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
+                        try:
+                            if _inst.GetTypeId() == sym_id: _sel3.Add(_inst.Id); break
+                        except: pass
+                    if _sel3.Count: break
+                if _sel3.Count:
+                    uid3.Selection.SetElementIds(_sel3)
+                    from Autodesk.Revit.UI import PostableCommand, RevitCommandId
+                    __revit__.PostCommand(RevitCommandId.LookupPostableCommandId(PostableCommand.EditFamily))
+                    import time as _time
+                    for _ in range(20):
+                        _time.sleep(0.3)
+                        for _d in __revit__.Application.Documents:
+                            if _d.IsFamilyDocument and _d.Title.lower() == row.FamilyName.lower():
+                                nested_doc = _d; break
+                        if nested_doc: break
+        except Exception as _ex:
+            window.FindName("NestStatus").Text = "Error getting family: {}".format(str(_ex)[:80])
+            return
+
+        if not nested_doc:
+            window.FindName("NestStatus").Text = "Could not open '{}' — no instances to trigger EditFamily.".format(row.FamilyName)
+            return
+
+        # Save to 0_HOLDING
+        try:
+            from Autodesk.Revit.DB import SaveAsOptions
+            opts = SaveAsOptions()
+            opts.OverwriteExistingFile = True
+            nested_doc.SaveAs(save_path, opts)
+            window.FindName("NestStatus").Text = u"Saved: {}".format(os.path.basename(save_path))
+        except Exception as _ex:
+            window.FindName("NestStatus").Text = "Save failed: {}".format(str(_ex)[:80])
+
+    window.FindName("BtnSaveNested").Click += do_save_nested
 
     window.FindName("BtnDelSubcat").Click  += do_del_subcat
     window.FindName("BtnDelTypes").Click   += do_del_types
