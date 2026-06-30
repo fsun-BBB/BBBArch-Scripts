@@ -1343,28 +1343,29 @@ def _run_optimizer(target_doc):
         except: pass
 
         # 2. Direct path guesses — os.listdir + os.path.exists only (no walking)
-        if not fam_path and doc.PathName:
+        if not fam_path:
             try:
-                cur_dir = os.path.dirname(doc.PathName)   # e.g. ..\Air Terminals
-                stage   = os.path.dirname(cur_dir)         # e.g. ..\2_GUARDIAN PASS
-                conf    = os.path.dirname(stage)           # e.g. ..\Content Conformance
+                cur_dir  = os.path.dirname(doc.PathName) if doc.PathName else ""
+                stage    = os.path.dirname(cur_dir)
+                conf     = os.path.dirname(stage)
+                holding  = os.path.join(conf, "0_HOLDING")   # master library
 
                 candidates = [
-                    os.path.join(cur_dir, fam_file),        # same folder as current family
-                    os.path.join(stage,   cat, fam_file),   # stage / Category / name
-                    os.path.join(stage,   fam_file),        # directly in stage root
-                    os.path.join(conf,    cat, fam_file),   # conf / Category / name
+                    os.path.join(cur_dir, fam_file),         # same folder
+                    os.path.join(stage,   cat, fam_file),    # stage/Category/name
+                    os.path.join(stage,   fam_file),         # stage root
+                    os.path.join(holding, cat, fam_file),    # 0_HOLDING/Category/name  ← primary
+                    os.path.join(holding, fam_file),         # 0_HOLDING root
                 ]
-                # Check every direct subfolder of stage (one listdir call, no recursion)
+                # All direct subfolders of 0_HOLDING (one listdir, no recursion)
+                try:
+                    for _sub in os.listdir(holding):
+                        candidates.append(os.path.join(holding, _sub, fam_file))
+                except: pass
+                # All direct subfolders of stage (sibling category folders)
                 try:
                     for _sub in os.listdir(stage):
                         candidates.append(os.path.join(stage, _sub, fam_file))
-                except: pass
-                # Check every direct subfolder of conf (covers sibling stages)
-                try:
-                    for _sub in os.listdir(conf):
-                        candidates.append(os.path.join(conf, _sub, cat, fam_file))
-                        candidates.append(os.path.join(conf, _sub, fam_file))
                 except: pass
 
                 for _p in candidates:
