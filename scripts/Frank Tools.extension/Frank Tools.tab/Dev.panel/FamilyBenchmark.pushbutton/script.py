@@ -516,31 +516,34 @@ start_time = time.time()
 
 _cancelled = False
 _pb = forms.ProgressBar(
-    title="Family Benchmark  —  0 / {}".format(len(rfa_files)),
+    title="Family Benchmark  —  scanning {} families".format(len(rfa_files)),
     cancellable=True,
     total=len(rfa_files),
 )
 _pb.update_progress(0, len(rfa_files))
+output.update_progress(0, len(rfa_files))
 
 for idx, fpath in enumerate(rfa_files, 1):
     if _pb.cancelled:
         _cancelled = True
         output.print_html(
-            '<div style="margin:10px 0;padding:10px 14px;background:#1a1000;'
-            'border-left:3px solid #f2994a;border-radius:4px;'
-            'color:#f2994a;font-size:12px;font-weight:700">'
-            '&#9940; Cancelled after {}/{} families — results below are partial.'
+            '<div style="margin:10px 0;padding:10px 14px;background:#FFFCF5;'
+            'border-left:4px solid #F0883E;border-radius:6px;'
+            'color:#B45309;font-size:12px;font-weight:700">'
+            '&#9940; Cancelled after {}/{} families — partial results below.'
             '</div>'.format(idx - 1, len(rfa_files)))
         break
-
-    _pb.update_progress(idx, len(rfa_files))
 
     rel  = os.path.relpath(fpath, ROOT)
     name = os.path.splitext(os.path.basename(fpath))[0]
 
+    _pb.update_progress(idx, len(rfa_files))
+    _pb.title = "({}/{})  {}".format(idx, len(rfa_files), name)
+    output.update_progress(idx, len(rfa_files))
+
     output.print_html(
-        '<div style="font-size:10px;color:#2e2e2e;font-family:monospace;line-height:1.6">'
-        '<span style="color:#444">({}/{})</span>&nbsp;&nbsp;{}</div>'.format(
+        '<div style="font-size:10px;color:#888;font-family:Consolas,monospace;line-height:1.6">'
+        '<span style="color:#bbb">({}/{})</span>&nbsp;&nbsp;{}</div>'.format(
             idx, len(rfa_files), rel))
 
     try: nbytes = os.path.getsize(fpath)
@@ -702,6 +705,8 @@ for idx, fpath in enumerate(rfa_files, 1):
         if opened_here:
             try: fdoc.Close(False)
             except Exception: pass
+
+output.reset_progress()
 
 # ── SUMMARY CARD ──────────────────────────────────────────────────────────────
 
