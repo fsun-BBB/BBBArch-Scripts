@@ -1583,6 +1583,9 @@ def _run_optimizer(target_doc):
 
         # ── 4. Get the family document ────────────────────────────────────────
         nested_doc = None
+        _temp_id   = None
+
+        fam_el = doc.GetElement(ElementId(row.FamId))
 
         # A: already open in app.Documents?
         for _d in __revit__.Application.Documents:
@@ -1591,73 +1594,25 @@ def _run_optimizer(target_doc):
                     nested_doc = _d; break
             except: pass
 
-        # B: open from disk if source file found
+        # B: Document.EditFamily(Family) — synchronous, no instances needed (Revit 2019+)
+        if not nested_doc:
+            try:
+                nested_doc = doc.EditFamily(fam_el)
+            except: pass
+
+        # C: open from source file found on disk
         if not nested_doc and src_path:
             try:
                 _uid_s = __revit__.OpenAndActivateDocument(src_path)
                 if _uid_s: nested_doc = _uid_s.Document
             except: pass
 
-        # C: place a temporary instance → select it → PostCommand.EditFamily → poll
-        #    For annotation families: use FamilyCreate.NewAnnotationSymbol on a plan view
-        #    Works even with 0 existing instances; temp instance is deleted after export
-        _temp_id = None
+        # D: last resort — close dialog, let PostCommand fire, user re-opens optimizer
         if not nested_doc:
-            try:
-                fam2     = doc.GetElement(ElementId(row.FamId))
-                sym_ids2 = list(fam2.GetFamilySymbolIds())
-                if sym_ids2:
-                    from Autodesk.Revit.DB import View, ViewType, XYZ
-                    sym2 = doc.GetElement(sym_ids2[0])
-                    if not sym2.IsActive:
-                        with Transaction(doc, "Activate symbol") as _ta:
-                            _ta.Start(); sym2.Activate(); _ta.Commit()
-                    # Find a plan or drafting view in the current family doc
-                    _pv = None
-                    for _v in FilteredElementCollector(doc).OfClass(View).ToElements():
-                        try:
-                            if (not _v.IsTemplate and
-                                    _v.ViewType in [ViewType.FloorPlan, ViewType.CeilingPlan,
-                                                    ViewType.DraftingView]):
-                                _pv = _v; break
-                        except: pass
-                    if _pv:
-                        with Transaction(doc, "Temp place for export") as _tp:
-                            _tp.Start()
-                            _ti = doc.FamilyCreate.NewAnnotationSymbol(XYZ.Zero, sym2, _pv)
-                            _tp.Commit()
-                        _temp_id = _ti.Id
-                        # Select the placed instance and fire EditFamily
-                        uid3 = __revit__.ActiveUIDocument
-                        from System.Collections.Generic import List as _CL3
-                        _sel3 = _CL3[ElementId]()
-                        _sel3.Add(_temp_id)
-                        uid3.Selection.SetElementIds(_sel3)
-                        from Autodesk.Revit.UI import PostableCommand, RevitCommandId
-                        __revit__.PostCommand(
-                            RevitCommandId.LookupPostableCommandId(PostableCommand.EditFamily))
-                        import time as _tm
-                        for _ in range(30):
-                            _tm.sleep(0.3)
-                            for _d in __revit__.Application.Documents:
-                                try:
-                                    if (_d.IsFamilyDocument and
-                                            _d.Title.lower() == row.FamilyName.lower()):
-                                        nested_doc = _d; break
-                                except: pass
-                            if nested_doc: break
-            except: pass
-
-        if not nested_doc:
-            # Clean up temp if placement worked but EditFamily didn't open
-            if _temp_id:
-                try:
-                    with Transaction(doc, "Remove temp") as _tc:
-                        _tc.Start(); doc.Delete(_temp_id); _tc.Commit()
-                except: pass
             window.FindName("NestStatus").Text = (
-                u"Could not open '{}' for export. "
-                u"Try placing one instance manually first.".format(row.FamilyName))
+                u"Cannot extract '{}' — doc.EditFamily not supported on this Revit version "
+                u"and source file not found. Open the family manually via Revit and retry.".format(
+                    row.FamilyName))
             return
 
         # ── 5. SaveAs to 1_AUDITED / Category / BBBName.rfa ──────────────────
@@ -1669,13 +1624,6 @@ def _run_optimizer(target_doc):
             window.FindName("NestStatus").Text = u"Saved to 1_AUDITED: {}".format(os.path.basename(save_path))
         except Exception as _ex:
             window.FindName("NestStatus").Text = "Save failed: {}".format(str(_ex)[:80])
-        finally:
-            # Remove the temporary placed instance if we created one
-            if _temp_id:
-                try:
-                    with Transaction(doc, "Remove temp place") as _tc:
-                        _tc.Start(); doc.Delete(_temp_id); _tc.Commit()
-                except: pass
 
     window.FindName("BtnSaveNested").Click += do_save_nested
 
