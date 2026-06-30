@@ -1360,8 +1360,10 @@ def _run_optimizer(target_doc):
                 _uid = __revit__.OpenAndActivateDocument(fam_path)
                 nested = _uid.Document if _uid else None
                 if nested and nested.IsFamilyDocument:
-                    _next[0] = nested
-                    window.Close()
+                    global doc
+                    _saved_doc = doc        # remember parent doc
+                    _run_optimizer(nested)  # opens on top; blocks until nested window closes
+                    doc = _saved_doc        # restore parent doc when user returns
                     return
             except Exception as _ex:
                 window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80])
