@@ -66,16 +66,35 @@ if not ROOT:
     script.exit()
 
 # ── CONSTANTS ─────────────────────────────────────────────────────────────────
+# (stage detection function defined below with GP_ROOT / CLN_ROOT)
 
 AUDITED_ROOT = r"N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\1_AUDITED"
+GP_ROOT      = r"N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\2_GUARDIAN PASS"
+CLN_ROOT     = r"N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\3_CLEANED"
 DATABASE_ID  = "387d917d-ca75-818e-b124-e7b8f7a8d530"   # Revit Families Scores
-RUNS_DB_ID   = "387d917d-ca75-80a8-a323-de09adfce8ab"   # Revit Families Scores Log
+RUNS_DB_ID   = "387d917d-ca75-80a8-a323-de09adfce8ab"   # Revit Families Scoring Log
 
+def _get_stage(path):
+    norm = os.path.normpath(path).lower()
+    if norm.startswith(os.path.normpath(GP_ROOT).lower()):
+        return "2_Guardian Pass"
+    if norm.startswith(os.path.normpath(CLN_ROOT).lower()):
+        return "3_Cleaned"
+    return "Others"
+
+_CONFORMANCE_ROOT = os.path.dirname(GP_ROOT)   # N:\...\Content Conformance
 _token_candidates = [
-    os.path.join(ROOT, "notion_token.txt"),
-    os.path.join(AUDITED_ROOT, "notion_token.txt"),
+    os.path.join(ROOT,              "notion_token.txt"),
+    os.path.join(os.path.dirname(ROOT), "notion_token.txt"),   # one level up
+    os.path.join(_CONFORMANCE_ROOT, "notion_token.txt"),
+    os.path.join(GP_ROOT,           "notion_token.txt"),
+    os.path.join(CLN_ROOT,          "notion_token.txt"),
+    os.path.join(AUDITED_ROOT,      "notion_token.txt"),
 ]
 TOKEN_FILE = next((p for p in _token_candidates if os.path.exists(p)), None)
+
+RUN_STAGE = _get_stage(ROOT)
+_STAGE_COLOR = {"2_Guardian Pass": "#58A6FF", "3_Cleaned": "#3FB950", "Others": "#888888"}
 
 # ── REQUIRED PARAMETERS ───────────────────────────────────────────────────────
 
@@ -179,12 +198,12 @@ def fmt_bytes(n):
     return "{} B".format(n)
 
 def _score_color(s):
-    if s is None: return "#555","#111"
-    if s >= 90: return "#6fcf97","#0d2015"
-    if s >= 80: return "#27ae60","#0a1f0f"
-    if s >= 70: return "#f2c94c","#2a2000"
-    if s >= 60: return "#f2994a","#2a1500"
-    return "#eb5757","#2a0a0a"
+    if s is None: return "#888","#F6F8FA"
+    if s >= 90: return "#16803A","#EAFFF0"
+    if s >= 80: return "#16803A","#D4F5DC"
+    if s >= 70: return "#B45309","#FEF3C7"
+    if s >= 60: return "#C2410C","#FFF3E0"
+    return "#B91C1C","#FFF0F0"
 
 def _read_type_val(ft, p):
     try: return str(round(ft.AsDouble(p),6))
@@ -333,8 +352,8 @@ def _update_family_scores(page_id, token, r):
     except Exception as _ot_exc:
         return "OT_ERR:{}".format(str(_ot_exc)[:300])
 
-def _add_log_row(family_page_id, family_name, category, token, r, run_time):
-    """Append a new log entry to the A database — always creates, never updates."""
+def _add_log_row(family_page_id, family_name, category, token, r, run_time, stage):
+    """Append a new log entry to the log database — always creates, never updates."""
     title = "{} - {}".format(run_time, family_name)
     _notion_call(
         "https://api.notion.com/v1/pages", token, "POST",
@@ -342,6 +361,7 @@ def _add_log_row(family_page_id, family_name, category, token, r, run_time):
          "properties": {
              "Time Stamp":        {"title": [{"text": {"content": title}}]},
              "relation":          {"relation": [{"id": family_page_id}]},
+             "Stage":             {"select": {"name": stage}},
              "Category":          {"select": {"name": category}} if category else {"select": None},
              "Proposed Name":     {"rich_text": [{"type": "text", "text": {"content": family_name}}]},
              "Final Score":       {"number": r.get("fs", 0)},
@@ -366,6 +386,54 @@ def _add_log_row(family_page_id, family_name, category, token, r, run_time):
              "Text Styles":       {"number": r.get("n_text_styles", 0)},
          }})
 
+# ── SCORES DB: find-or-create per family+stage ───────────────────────────────
+
+def _score_props(r):
+    return {
+        "Final Score":        {"number": r.get("fs", 0)},
+        "Geom Score":         {"number": r.get("g_score", 0)},
+        "File Size":          {"rich_text": [{"type": "text", "text": {"content": "{:.2f} MB".format(r.get("bytes", 0) / 1000000.0)}}]},
+        "Face Count":         {"number": r.get("n_faces", 0)},
+        "Solid Count":        {"number": r.get("n_solids", 0)},
+        "Edge Count":         {"number": r.get("n_edges", 0)},
+        "Imported CAD":       {"number": r.get("n_cad", 0)},
+        "Raster Images":      {"number": r.get("n_images", 0)},
+        "Nested Families":    {"number": r.get("n_nested", 0)},
+        "Model Groups":       {"number": r.get("n_groups", 0)},
+        "Unnamed Ref Planes": {"number": r.get("n_anon_rp", 0)},
+        "Unused Type Params": {"number": r.get("n_unused_type", 0)},
+        "Unused Inst Params": {"number": r.get("n_unused_inst", 0)},
+        "Shared Params":      {"number": r.get("n_shared", 0)},
+        "Total Params":       {"number": r.get("n_params", 0)},
+        "Formula Params":     {"number": r.get("n_formula_params", 0)},
+        "Line Styles":        {"number": r.get("n_line_styles", 0)},
+        "Dimensions":         {"number": r.get("n_dims", 0)},
+        "Filled Regions":     {"number": r.get("n_filled", 0)},
+        "Text Styles":        {"number": r.get("n_text_styles", 0)},
+    }
+
+def _upsert_score_page(name, stage, category, token, r):
+    """Find existing row for this family+stage, update it; or create if missing."""
+    q = _notion_call(
+        "https://api.notion.com/v1/databases/{}/query".format(DATABASE_ID),
+        token, "POST",
+        {"filter": {"and": [
+            {"property": "Family Name", "title":  {"equals": name}},
+            {"property": "Stage",       "select": {"equals": stage}},
+        ]}, "page_size": 1})
+    pages = q.get("results", [])
+    props = _score_props(r)
+    if pages:
+        _notion_call("https://api.notion.com/v1/pages/{}".format(pages[0]["id"]),
+                     token, "PATCH", {"properties": props})
+    else:
+        props["Family Name"] = {"title": [{"text": {"content": name}}]}
+        props["Stage"]       = {"select": {"name": stage}}
+        if category:
+            props["Category"] = {"select": {"name": category}}
+        _notion_call("https://api.notion.com/v1/pages", token, "POST",
+                     {"parent": {"database_id": DATABASE_ID}, "properties": props})
+
 # ── HTML HELPERS ──────────────────────────────────────────────────────────────
 
 def _score_td(score):
@@ -376,12 +444,12 @@ def _score_td(score):
             'color:{};font-weight:600">{}</td>').format(bg,fg,score)
 
 def _num_td(val):
-    return '<td style="padding:5px 10px;text-align:right;color:#888">{}</td>'.format(val)
+    return '<td style="padding:5px 10px;text-align:right;color:#555;font-family:Consolas,monospace">{}</td>'.format(val)
 
 def _flag_td(val):
     if val == 0:
-        return '<td style="padding:5px 10px;text-align:right;color:#2a2a2a">0</td>'
-    return '<td style="padding:5px 10px;text-align:right;color:#e07b39;font-weight:600">{}</td>'.format(val)
+        return '<td style="padding:5px 10px;text-align:right;color:#bbb;font-family:Consolas,monospace">0</td>'
+    return '<td style="padding:5px 10px;text-align:right;color:#C2410C;font-weight:700;font-family:Consolas,monospace">{}</td>'.format(val)
 
 # ── SCAN ──────────────────────────────────────────────────────────────────────
 
@@ -389,9 +457,10 @@ output.print_html("""
 <div style="border-bottom:2px solid #2a2a2a;padding-bottom:10px;margin-bottom:12px">
   <span style="font-size:18px;font-weight:700;color:#e0e0e0">Family Efficiency Benchmark</span>
   <span style="font-size:11px;color:#444;margin-left:12px">v6</span>
+  <span style="margin-left:14px;background:{sc};color:#000;border-radius:3px;padding:2px 10px;font-size:11px;font-weight:700">{st}</span>
 </div>
-<p style="font-size:11px;color:#555;font-family:monospace;margin:4px 0">{}</p>
-""".format(ROOT))
+<p style="font-size:11px;color:#555;font-family:monospace;margin:4px 0">{root}</p>
+""".format(sc=_STAGE_COLOR.get(RUN_STAGE,"#888"), st=RUN_STAGE, root=ROOT))
 
 rfa_files = []
 for root_dir, _, files in os.walk(ROOT):
@@ -623,23 +692,23 @@ if scored:
     avg_fg, _ = _score_color(int(avg_ws))
 
     output.print_html("""
-<div style="background:#161616;border:1px solid #2a2a2a;border-radius:8px;padding:16px 20px;margin:14px 0 8px 0">
+<div style="background:#FFFFFF;border:1px solid #D0D7DE;border-radius:8px;padding:16px 22px;margin:14px 0 10px 0">
   <table style="width:100%;border-collapse:collapse">
     <tr>
-      <td style="padding:0 24px 0 0;border-right:1px solid #2a2a2a;white-space:nowrap">
-        <div style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px">Families</div>
-        <div style="color:#e0e0e0;font-size:26px;font-weight:700;line-height:1.2">{total}</div>
+      <td style="padding:0 24px 0 0;border-right:1px solid #E8EBEF;white-space:nowrap">
+        <div style="color:#888;font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Families</div>
+        <div style="color:#000;font-size:28px;font-weight:700;line-height:1.2;font-family:Consolas,monospace">{total}</div>
       </td>
-      <td style="padding:0 24px;border-right:1px solid #2a2a2a;white-space:nowrap">
-        <div style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px">Avg Final Score</div>
-        <div style="color:{avg_fg};font-size:26px;font-weight:700;line-height:1.2">{avg:.1f}</div>
+      <td style="padding:0 24px;border-right:1px solid #E8EBEF;white-space:nowrap">
+        <div style="color:#888;font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Avg Final Score</div>
+        <div style="color:{avg_fg};font-size:28px;font-weight:700;line-height:1.2;font-family:Consolas,monospace">{avg:.1f}</div>
       </td>
-      <td style="padding:0 24px;border-right:1px solid #2a2a2a;white-space:nowrap">
-        <div style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px">Time</div>
-        <div style="color:#e0e0e0;font-size:26px;font-weight:700;line-height:1.2">{t}</div>
+      <td style="padding:0 24px;border-right:1px solid #E8EBEF;white-space:nowrap">
+        <div style="color:#888;font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:600">Time</div>
+        <div style="color:#000;font-size:28px;font-weight:700;line-height:1.2;font-family:Consolas,monospace">{t}</div>
       </td>
       <td style="padding:0 0 0 24px">
-        <div style="color:#555;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Grade Distribution</div>
+        <div style="color:#888;font-size:9px;text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:8px">Grade Distribution</div>
         {pills}
       </td>
     </tr>
@@ -651,40 +720,40 @@ if scored:
         pills=pills))
 
     # Results table
-    output.print_html("""
-<table style="width:100%;border-collapse:collapse;font-size:12px;font-family:monospace">
-  <thead>
-    <tr style="background:#1e1e1e;color:#555;font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
-      <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #2a2a2a">#</th>
-      <th style="padding:6px 10px;text-align:left;border-bottom:1px solid #2a2a2a">Family</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">File Size</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Final</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Norm</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Geom</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Faces</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">CAD</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Img</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Nested</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Groups</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Ref Planes</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Unused T</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Unused I</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Params</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Shared</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Formulas</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a;border-left:1px solid #2a2a2a">Line Styles</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Dim Styles</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Filled Rgn</th>
-      <th style="padding:6px 10px;text-align:right;border-bottom:1px solid #2a2a2a">Text Styles</th>
-    </tr>
-  </thead><tbody>""")
+    _th = 'style="padding:7px 10px;text-align:right;border-bottom:2px solid #D0D7DE;color:#555;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;white-space:nowrap;background:#F6F8FA"'
+    _th_l = 'style="padding:7px 10px;text-align:left;border-bottom:2px solid #D0D7DE;color:#555;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;background:#F6F8FA"'
+    output.print_html(
+        '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+        '<thead><tr>'
+        '<th {tl}>#</th>'
+        '<th {tl}>Family</th>'
+        '<th {t}>File Size</th>'
+        '<th {t}>Final</th>'
+        '<th {t}>Norm</th>'
+        '<th {t}>Geom</th>'
+        '<th {t}>Faces</th>'
+        '<th {t}>CAD</th>'
+        '<th {t}>Img</th>'
+        '<th {t}>Nested</th>'
+        '<th {t}>Groups</th>'
+        '<th {t}>Ref Planes</th>'
+        '<th {t}>Unused T</th>'
+        '<th {t}>Unused I</th>'
+        '<th {t}>Params</th>'
+        '<th {t}>Shared</th>'
+        '<th {t}>Formulas</th>'
+        '<th {t} style="border-left:2px solid #D0D7DE;padding:7px 10px;text-align:right;background:#F6F8FA;color:#555;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Line Styles</th>'
+        '<th {t}>Dim Styles</th>'
+        '<th {t}>Filled Rgn</th>'
+        '<th {t}>Text Styles</th>'
+        '</tr></thead><tbody>'.format(t=_th, tl=_th_l))
 
     for i, r in enumerate(scored, 1):
-        bg = "#0f0f0f" if i%2==0 else "#111"
+        bg = "#F6F8FA" if i%2==0 else "#FFFFFF"
         output.print_html(
-            '<tr style="background:{bg};border-bottom:1px solid #1a1a1a">'
-            '<td style="padding:5px 10px;color:#333;font-size:10px">{i}</td>'
-            '<td style="padding:5px 10px;color:#d0d0d0;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{n}</td>'
+            '<tr style="background:{bg};border-bottom:1px solid #E8EBEF">'
+            '<td style="padding:5px 10px;color:#aaa;font-size:10px;font-family:Consolas,monospace">{i}</td>'
+            '<td style="padding:5px 10px;color:#000;font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{n}</td>'
             '{sz}{fs}{ws}{gm}{fc}{cd}{img}{ns}{grp}{rp}{ut}{ui}{pm}{sh}{fm}{ls}{dm}{fl}{ts}</tr>'.format(
                 bg=bg,i=i,n=r["name"],
                 sz=_num_td(r["size_fmt"]),
@@ -714,119 +783,171 @@ if scored:
     flagged = [r for r in scored if r["fs"] < 70]
     if flagged:
         output.print_html(
-            '<div style="margin-top:16px;background:#1a0f00;border-left:3px solid #f2994a;'
-            'border-radius:4px;padding:12px 16px">'
-            '<div style="color:#f2994a;font-size:12px;font-weight:700;margin-bottom:8px">'
-            'Below 70 — {} families</div>'.format(len(flagged)))
+            '<div style="margin-top:14px;background:#FFFCF5;border:1px solid #FDD9A0;'
+            'border-left:4px solid #F0883E;border-radius:6px;padding:14px 16px">'
+            '<div style="color:#B45309;font-size:12px;font-weight:700;margin-bottom:10px">'
+            'Below 70 — {} families need attention</div>'.format(len(flagged)))
         for r in flagged:
             issues = []
-            if r["n_cad"]:           issues.append("imported CAD ({})".format(r["n_cad"]))
+            if r["n_cad"]:           issues.append("CAD imports ({})".format(r["n_cad"]))
             if r["n_images"]:        issues.append("raster images ({})".format(r["n_images"]))
-            if r["n_nested"]:        issues.append("nested families ({})".format(r["n_nested"]))
-            if r["n_groups"]:        issues.append("model groups ({})".format(r["n_groups"]))
-            if r["n_anon_rp"]:       issues.append("unnamed ref planes ({})".format(r["n_anon_rp"]))
-            if r["n_unused_type"]:   issues.append("orphan type params ({})".format(r["n_unused_type"]))
-            if r["n_unused_inst"]:   issues.append("orphan inst params ({})".format(r["n_unused_inst"]))
+            if r["n_nested"]:        issues.append("nested ({})".format(r["n_nested"]))
+            if r["n_groups"]:        issues.append("groups ({})".format(r["n_groups"]))
+            if r["n_anon_rp"]:       issues.append("unnamed planes ({})".format(r["n_anon_rp"]))
+            if r["n_unused_type"]:   issues.append("unused type params ({})".format(r["n_unused_type"]))
+            if r["n_unused_inst"]:   issues.append("unused inst params ({})".format(r["n_unused_inst"]))
             if r["n_shared"]:        issues.append("shared params ({})".format(r["n_shared"]))
+            fg, bg = _score_color(r["fs"])
             output.print_html(
-                '<div style="font-size:11px;margin:3px 0">'
-                '<span style="color:#e07b39;font-weight:600">{}</span>'
-                '<span style="color:#555"> {}/100</span>'
-                '<span style="color:#444"> — {}</span></div>'.format(
-                    r["name"], r["ws"], " · ".join(issues) if issues else "review manually"))
+                '<div style="font-size:11px;margin:4px 0;display:flex;align-items:baseline">'
+                '<span style="background:{bg};color:{fg};font-weight:700;border-radius:3px;'
+                'padding:1px 7px;margin-right:8px;font-family:Consolas,monospace;font-size:11px">{sc}</span>'
+                '<span style="color:#000;font-weight:600;margin-right:6px">{nm}</span>'
+                '<span style="color:#888;font-size:10px">{issues}</span></div>'.format(
+                    bg=bg, fg=fg, sc=r["fs"], nm=r["name"],
+                    issues=" · ".join(issues) if issues else "review manually"))
         output.print_html("</div>")
 
 if errors:
     output.print_html(
-        '<div style="margin-top:12px;background:#160a0a;border-left:3px solid #eb5757;'
-        'border-radius:4px;padding:10px 14px">'
-        '<div style="color:#eb5757;font-size:11px;font-weight:700">Could not open — {} files</div>'.format(len(errors)))
+        '<div style="margin-top:12px;background:#FFF0F0;border:1px solid #FFB0AE;'
+        'border-left:4px solid #F85149;border-radius:6px;padding:12px 16px">'
+        '<div style="color:#B91C1C;font-size:11px;font-weight:700;margin-bottom:6px">'
+        'Could not open — {} files</div>'.format(len(errors)))
     for r in errors:
-        output.print_html('<div style="color:#444;font-size:10px;font-family:monospace">{}</div>'.format(r["rel"]))
+        output.print_html('<div style="color:#555;font-size:10px;font-family:Consolas,monospace">{}</div>'.format(r["rel"]))
     output.print_html("</div>")
 
 # ── NOTION WRITEBACK ──────────────────────────────────────────────────────────
-# Matches each scanned family to its Notion page by Proposed Name,
-# then updates all 14 attribute columns in place.
+# 1. Log rows  — always written, tagged with stage
+# 2. Scores DB — only written when user confirms; blocked for "Others" stage
 
 if not TOKEN_FILE:
     output.print_html(
-        '<p style="color:#333;font-size:11px;margin-top:10px">'
-        'Notion skipped — notion_token.txt not found.</p>')
+        '<p style="color:#555;font-size:11px;margin-top:10px">'
+        'Notion skipped — notion_token.txt not found in ROOT or AUDITED_ROOT.</p>')
 elif scored:
-    output.print_html(
-        '<div style="margin-top:16px;padding:14px 16px;background:#0d160d;'
-        'border:1px solid #1a3a1a;border-radius:6px">')
     try:
         with open(TOKEN_FILE, "r") as _f:
             token = _f.read().strip()
 
-        output.print_html(
-            '<div style="color:#aaa;font-size:11px;margin-bottom:6px">'
-            'Loading Notion page map...</div>')
-        page_map = _load_page_map_by_name(token)
-        output.print_html(
-            '<div style="color:#555;font-size:11px;margin-bottom:8px">'
-            '{} entries in database</div>'.format(len(page_map)))
-
         run_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
-        n_written = 0
-        n_failed  = 0
-        unmatched = []
+        # ── 1. LOG ROWS (always, with stage) ─────────────────────────────────
+        output.print_html(
+            '<div style="margin-top:14px;padding:12px 16px;background:#0d160d;'
+            'border:1px solid #1a3a1a;border-radius:6px">'
+            '<div style="color:#aaa;font-size:11px;font-weight:700;margin-bottom:6px">'
+            '&#128196; Writing log rows (stage: {})...</div>'.format(RUN_STAGE))
+
+        # Build a quick name→(page_id, category) map from the Scores DB for log linking
+        _page_map = {}
+        _cursor = None
+        while True:
+            _body = {"page_size": 100}
+            if _cursor: _body["start_cursor"] = _cursor
+            _resp = _notion_call(
+                "https://api.notion.com/v1/databases/{}/query".format(DATABASE_ID),
+                token, "POST", _body)
+            for _pg in _resp.get("results", []):
+                try:
+                    _rt = _pg["properties"]["Family Name"]["title"]
+                    if _rt:
+                        _cat = ""
+                        try: _cat = _pg["properties"]["Category"]["select"]["name"]
+                        except Exception: pass
+                        _key = _rt[0]["plain_text"].lower()
+                        if _key not in _page_map:
+                            _page_map[_key] = (_pg["id"], _cat)
+                except Exception: pass
+            if _resp.get("has_more"): _cursor = _resp["next_cursor"]
+            else: break
+
+        n_log = 0; n_log_fail = 0
         for r in scored:
-            result = page_map.get(r["name"].lower())
-            if not result:
-                unmatched.append(r["name"])
-                continue
-            pid, category = result
-            try:
-                _ot_result = _update_family_scores(pid, token, r)
-                n_written += 1
-                if _ot_result and _ot_result.startswith("OT_ERR:") and n_written == 1:
-                    output.print_html(
-                        '<div style="color:#f2994a;font-size:10px;font-family:monospace;'
-                        'margin:2px 0">Off-template columns error (check Notion column names): '
-                        '{}</div>'.format(_ot_result[7:]))
-            except Exception as _row_exc:
-                n_failed += 1
-                if n_failed <= 3:
-                    output.print_html(
-                        '<div style="color:#eb5757;font-size:10px;font-family:monospace;'
-                        'margin:2px 0">Write error ({}): {}</div>'.format(
-                            r["name"], str(_row_exc)[:600]))
-            try:
-                _add_log_row(pid, r["name"], category, token, r, run_time)
-            except Exception as _log_exc:
-                output.print_html('<div style="color:#f2994a;font-size:10px">Log row failed ({}): {}</div>'.format(
-                    r["name"], str(_log_exc)[:200]))
+            pid, category = _page_map.get(r["name"].lower(), (None, ""))
+            if pid is None:
+                # Family not yet in scores DB — create a stub so log can link to it
+                try:
+                    _stub = _score_props(r)
+                    _stub["Family Name"] = {"title": [{"text": {"content": r["name"]}}]}
+                    _stub["Stage"] = {"select": {"name": RUN_STAGE}}
+                    _new = _notion_call("https://api.notion.com/v1/pages", token, "POST",
+                                       {"parent": {"database_id": DATABASE_ID}, "properties": _stub})
+                    pid = _new.get("id")
+                    _page_map[r["name"].lower()] = (pid, "")
+                except Exception: pass
+            if pid:
+                try:
+                    _add_log_row(pid, r["name"], category, token, r, run_time, RUN_STAGE)
+                    n_log += 1
+                except Exception as _le:
+                    n_log_fail += 1
+                    if n_log_fail <= 3:
+                        output.print_html(
+                            '<div style="color:#f2994a;font-size:10px">Log row failed ({}): {}</div>'.format(
+                                r["name"], str(_le)[:200]))
 
         output.print_html(
-            '<div style="color:{};font-size:13px;font-weight:700">'
-            '&#10003; {}/{} families updated{}</div>'.format(
-                "#6fcf97" if n_failed == 0 else "#f2994a",
-                n_written, len(scored),
-                " ({} write errors — see above)".format(n_failed) if n_failed else ""))
+            '<div style="color:#6fcf97;font-size:12px">&#10003; {} log rows written{}</div>'.format(
+                n_log, " ({} failed)".format(n_log_fail) if n_log_fail else ""))
+        output.print_html("</div>")
 
-        if unmatched:
-            output.print_html(
-                '<div style="color:#f2994a;font-size:11px;margin-top:6px">'
-                'Not matched in Notion ({}):</div>'.format(len(unmatched)))
-            for nm in unmatched:
+        # ── 2. SCORES DB (user must confirm; blocked for Others) ──────────────
+        if RUN_STAGE == "Others":
+            forms.alert(
+                "Stage detected: Others\n\n"
+                "This folder is not under 2_GUARDIAN PASS or 3_CLEANED.\n"
+                "Scores have been logged but will NOT be saved to Revit Families Scores.",
+                title="Save Scores — Not a Valid Stage")
+        else:
+            save_confirmed = forms.alert(
+                "Save scores to Revit Families Scores?\n\n"
+                "Stage: {}\n"
+                "Families: {}\n"
+                "Folder: {}\n\n"
+                "This will override all scores for these families at this stage.".format(
+                    RUN_STAGE, len(scored), ROOT),
+                title="Save Scores to Notion",
+                options=["Save Scores", "Skip"])
+
+            if save_confirmed == "Save Scores":
                 output.print_html(
-                    '<div style="color:#666;font-size:11px;font-family:monospace">'
-                    '&nbsp;&nbsp;{}</div>'.format(nm))
+                    '<div style="margin-top:10px;padding:12px 16px;background:#0d160d;'
+                    'border:1px solid #1a3a1a;border-radius:6px">'
+                    '<div style="color:#aaa;font-size:11px;font-weight:700;margin-bottom:6px">'
+                    '&#128190; Saving scores (stage: {})...</div>'.format(RUN_STAGE))
+
+                n_saved = 0; n_save_fail = 0
+                for r in scored:
+                    _, cat = _page_map.get(r["name"].lower(), (None, ""))
+                    try:
+                        _upsert_score_page(r["name"], RUN_STAGE, cat, token, r)
+                        n_saved += 1
+                    except Exception as _se:
+                        n_save_fail += 1
+                        if n_save_fail <= 3:
+                            output.print_html(
+                                '<div style="color:#eb5757;font-size:10px">'
+                                'Save failed ({}): {}</div>'.format(r["name"], str(_se)[:300]))
+
+                output.print_html(
+                    '<div style="color:#6fcf97;font-size:12px">&#10003; {}/{} scores saved to {}{}</div>'.format(
+                        n_saved, len(scored), RUN_STAGE,
+                        " ({} errors)".format(n_save_fail) if n_save_fail else ""))
+                output.print_html("</div>")
 
     except Exception as exc:
         output.print_html(
             '<div style="color:#eb5757;font-size:11px">Notion error: {}</div>'.format(exc))
 
-    output.print_html("</div>")
-
 # ── CSV ───────────────────────────────────────────────────────────────────────
 
-csv_path = os.path.join(ROOT, "_benchmark_results.csv")
+_csv_date  = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+_csv_name  = "_benchmark_{}_{}.csv".format(RUN_STAGE.replace(" ", "_"), _csv_date)
+csv_path   = os.path.join(ROOT, _csv_name)
 _CSV_MAP = [
+    ("_stage",           "Stage"),
     ("name",             "Family Name"),
     ("rel",              "Relative Path"),
     ("size_fmt",         "File Size"),
@@ -855,7 +976,9 @@ _CSV_MAP = [
 ]
 _csv_fields = [col for _, col in _CSV_MAP]
 def _remap_csv(r):
-    return {col: r.get(key, "") for key, col in _CSV_MAP}
+    row = {col: r.get(key, "") for key, col in _CSV_MAP}
+    row["Stage"] = RUN_STAGE
+    return row
 
 def _write_csv(path):
     with open(path, "wb") as f:
