@@ -1320,15 +1320,24 @@ def _run_optimizer(target_doc):
             except: pass
             if not fam_path or not os.path.exists(fam_path):
                 fam_file = row.FamilyName + ".rfa"
-                parent_dir = ""
-                try: parent_dir = os.path.dirname(doc.PathName)
+                # Build search roots: walk UP the directory tree from the current family
+                # to find the broadest sensible root (stops at Content Conformance or drive root)
+                search_roots = []
+                try:
+                    d = os.path.dirname(doc.PathName)
+                    while d and d != os.path.dirname(d):
+                        search_roots.append(d)
+                        if os.path.basename(d).lower() in ("content conformance","01_bim content","bim content"):
+                            break
+                        d = os.path.dirname(d)
                 except: pass
-                if parent_dir:
-                    for _root, _dirs, _files in os.walk(parent_dir):
+                for _sr in search_roots:
+                    for _root, _dirs, _files in os.walk(_sr):
                         for _f in _files:
                             if _f.lower() == fam_file.lower():
                                 fam_path = os.path.join(_root, _f); break
                         if fam_path: break
+                    if fam_path: break
         except: pass
         if fam_path and os.path.exists(fam_path):
             try:
@@ -1342,7 +1351,7 @@ def _run_optimizer(target_doc):
                 window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80])
                 return
         else:
-            window.FindName("NestStatus").Text = "No file path found for '{}'.".format(row.FamilyName)
+            window.FindName("NestStatus").Text = "Not found: '{}' — check the family is in the same content tree.".format(row.FamilyName)
     window.FindName("BtnOpenNested").Click += do_open_nested
 
     window.FindName("BtnDelSubcat").Click  += do_del_subcat
