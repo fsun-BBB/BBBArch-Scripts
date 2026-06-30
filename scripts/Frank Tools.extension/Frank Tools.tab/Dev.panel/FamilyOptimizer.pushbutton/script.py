@@ -27,6 +27,8 @@ from System.Collections.ObjectModel import ObservableCollection
 
 doc = __revit__.ActiveUIDocument.Document
 
+HOLDING_ROOT = r"N:\Design Technology Resources\01_BIM CONTENT\Content Conformance\0_HOLDING"
+
 REQUIRED_PARAMS = {
     "Manufacturer","Model","OmniClass Number","OmniClass Title",
     "Description","Keynote","URL","Type Comments","Type Mark",
@@ -1342,27 +1344,26 @@ def _run_optimizer(target_doc):
             except: pass
         except: pass
 
-        # 2. Direct path guesses — os.listdir + os.path.exists only (no walking)
+        # 2. Direct path guesses — hardcoded 0_HOLDING first, then current family location
+        #    No os.walk — only os.listdir (one level) + os.path.exists checks
         if not fam_path:
             try:
-                cur_dir  = os.path.dirname(doc.PathName) if doc.PathName else ""
-                stage    = os.path.dirname(cur_dir)
-                conf     = os.path.dirname(stage)
-                holding  = os.path.join(conf, "0_HOLDING")   # master library
+                cur_dir = os.path.dirname(doc.PathName) if doc.PathName else ""
+                stage   = os.path.dirname(cur_dir)
 
                 candidates = [
-                    os.path.join(cur_dir, fam_file),         # same folder
-                    os.path.join(stage,   cat, fam_file),    # stage/Category/name
-                    os.path.join(stage,   fam_file),         # stage root
-                    os.path.join(holding, cat, fam_file),    # 0_HOLDING/Category/name  ← primary
-                    os.path.join(holding, fam_file),         # 0_HOLDING root
+                    os.path.join(HOLDING_ROOT, cat, fam_file),   # 0_HOLDING/Category/name
+                    os.path.join(HOLDING_ROOT, fam_file),         # 0_HOLDING root
+                    os.path.join(cur_dir, fam_file),              # same folder as current
+                    os.path.join(stage,   cat, fam_file),         # stage/Category/name
+                    os.path.join(stage,   fam_file),              # stage root
                 ]
-                # All direct subfolders of 0_HOLDING (one listdir, no recursion)
+                # All direct subfolders of 0_HOLDING (one listdir call)
                 try:
-                    for _sub in os.listdir(holding):
-                        candidates.append(os.path.join(holding, _sub, fam_file))
+                    for _sub in os.listdir(HOLDING_ROOT):
+                        candidates.append(os.path.join(HOLDING_ROOT, _sub, fam_file))
                 except: pass
-                # All direct subfolders of stage (sibling category folders)
+                # All direct subfolders of current stage (one listdir call)
                 try:
                     for _sub in os.listdir(stage):
                         candidates.append(os.path.join(stage, _sub, fam_file))
