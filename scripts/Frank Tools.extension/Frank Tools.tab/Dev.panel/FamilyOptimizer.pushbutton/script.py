@@ -1385,7 +1385,11 @@ def _run_optimizer(target_doc):
             except Exception as _ex:
                 window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80])
         else:
-            window.FindName("NestStatus").Text = "Not found: {}".format(fam_file)
+            window.FindName("NestStatus").Text = (
+                "Source file not found on disk for '{}' "
+                "({} instance{} placed — family is loaded but .rfa cannot be located).".format(
+                    row.FamilyName, row.InstanceCount,
+                    "s" if row.InstanceCount != 1 else ""))
     window.FindName("BtnOpenNested").Click += do_open_nested
 
     window.FindName("BtnDelSubcat").Click  += do_del_subcat
