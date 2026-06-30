@@ -891,15 +891,7 @@ elif scored:
                     try: _cat = _pg["properties"]["Category"]["select"]["name"]
                     except Exception: pass
                     _pid = _pg["id"]
-                    # Primary key: Proposed Name (BBB code name matches file name)
-                    try:
-                        _pn = _pg["properties"]["Proposed Name"]["rich_text"]
-                        if _pn:
-                            _k = _pn[0]["plain_text"].lower()
-                            if _k and _k not in _page_map:
-                                _page_map[_k] = (_pid, _cat)
-                    except Exception: pass
-                    # Fallback key: Family Name title
+                    # Match by Family Name title
                     try:
                         _fn = _pg["properties"]["Family Name"]["title"]
                         if _fn:
@@ -920,8 +912,7 @@ elif scored:
                 # Family not yet in scores DB — create a stub so log can link to it
                 try:
                     _stub = _score_props(r)
-                    _stub["Family Name"]   = {"title":     [{"text": {"content": r["name"]}}]}
-                    _stub["Proposed Name"] = {"rich_text": [{"type": "text", "text": {"content": r["name"]}}]}
+                    _stub["Family Name"] = {"title": [{"text": {"content": r["name"]}}]}
                     _stub["Stage"] = {"select": {"name": RUN_STAGE}}
                     if category:
                         _stub["Category"] = {"select": {"name": category}}
