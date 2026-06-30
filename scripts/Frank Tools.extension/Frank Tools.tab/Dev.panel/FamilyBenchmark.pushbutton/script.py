@@ -639,6 +639,16 @@ for idx, fpath in enumerate(rfa_files, 1):
             else:
                 unused_type.append(p.Definition.Name)
 
+        # ── User param count (excludes built-ins which cannot be deleted) ──────
+        n_user_params = 0
+        for p in all_fparams:
+            try:
+                defn = p.Definition
+                if isinstance(defn, InternalDefinition) and defn.BuiltInParameter != BuiltInParameter.INVALID:
+                    continue
+            except Exception: pass
+            n_user_params += 1
+
         n_nested = len(list(FilteredElementCollector(fdoc).OfClass(Family).ToElements()))
         n_groups = len(list(FilteredElementCollector(fdoc).OfClass(Group).ToElements()))
 
@@ -677,13 +687,13 @@ for idx, fpath in enumerate(rfa_files, 1):
                 n_cad,n_images,n_nested,n_groups,
                 n_anon,n_formula_params,
                 len(unused_type),len(unused_inst),
-                len(all_fparams),n_shared),
+                n_user_params,n_shared),
             "fs":compute_final_score(
                 nbytes,n_faces,n_solids,n_edges,
                 n_cad,n_images,n_nested,n_groups,
                 n_anon,n_formula_params,
                 len(unused_type),len(unused_inst),
-                len(all_fparams),n_shared),
+                n_user_params,n_shared),
             "raw_size":raw["size"],"raw_up":raw["up"],"raw_ot":raw["ot"],"raw_rp":raw["rp"],"raw_nc":raw["nc"],
             "n_cad":n_cad,"n_drafting":n_drafting,"n_images":n_images,"n_mtext":n_mtext,
             "n_anon_rp":n_anon,
@@ -692,7 +702,7 @@ for idx, fpath in enumerate(rfa_files, 1):
             "n_nested":n_nested,"n_groups":n_groups,
             "n_solids":n_solids,"n_faces":n_faces,"n_edges":n_edges,
             "n_shared":n_shared,
-            "n_params":len(all_fparams),
+            "n_params":n_user_params,
             "n_formula_params":n_formula_params,
             "n_line_styles":n_line_styles,"n_dims":n_dims,
             "n_filled":n_filled,"n_text_styles":n_text_styles,
