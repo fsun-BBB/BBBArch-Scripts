@@ -706,6 +706,7 @@ XAML = """
             </StackPanel>
             <Border Padding="28,10" Background="#FAFAFA" BorderBrush="#E8EBEF" BorderThickness="0,1,0,0">
               <StackPanel Orientation="Horizontal">
+                <Button x:Name="BtnOpenNested" Content="Open in Optimizer" Style="{StaticResource ActBtn}" IsEnabled="False" Margin="0,0,8,0"/>
                 <Button x:Name="BtnPurgeNest" Content="Purge Unplaced (0 instances)" Style="{StaticResource DangerBtn}" Margin="0,0,12,0"/>
                 <TextBlock x:Name="NestStatus" Foreground="#16803A" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
                 <Button x:Name="BtnUndoNest" Content="&#8617; Undo" Visibility="Collapsed" Background="#F3EEFF" Foreground="#7C3AED" BorderBrush="#C4A6FF" Padding="8,4"/>
@@ -865,467 +866,520 @@ if not doc.IsFamilyDocument:
             from pyrevit import forms
             forms.alert("Could not open family:\n{}".format(str(_ex)[:120]))
 
-if doc.IsFamilyDocument:
-    try: nbytes=os.path.getsize(doc.PathName) if doc.PathName else 0
-    except: nbytes=0
-    sz=nbytes/1000000.0
-    n_cad=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
-    all_rp=list(FilteredElementCollector(doc).OfClass(ReferencePlane).ToElements())
-    n_rp=sum(1 for rp in all_rp if (rp.Name or "").strip().lower() in ("reference plane",""))
-    try:
-        from Autodesk.Revit.DB import RasterImage
-        n_img=len(list(FilteredElementCollector(doc).OfClass(RasterImage).ToElements()))
-    except: n_img=0
-    n_nest=len(list(FilteredElementCollector(doc).OfClass(Family).ToElements()))
-    n_grp=len(list(FilteredElementCollector(doc).OfClass(Group).ToElements()))
-    n_s,n_f,n_e=_total_geom()
-    n_tp,n_sh,n_fp,ut,ui,ush=_collect_params()
-    n_ut=len(ut); n_ui=len(ui)
-    cur=_final(sz,n_cad,n_img,n_nest,n_grp,n_rp,n_ut,n_ui,n_tp,n_sh,n_fp,n_f,n_s,n_e)
-    pot=_final(sz,0,0,n_nest,0,0,0,0,max(0,n_tp-n_ut-n_ui),n_sh,n_fp,n_f,n_s,n_e)
-    ar=[]
-    sn,sm=contrib(sz,0,1,1.25)
-    ar.append(AttrRow("File Size","{:.2f} MB".format(sz),"Purge",sn,sm,"Run Purge Unused"))
-    sn,sm=contrib(n_cad,0,10,1.25)
-    try: cl="; ".join(el.Category.Name if el.Category else "CAD" for el in FilteredElementCollector(doc).OfClass(ImportInstance).ToElements())
-    except: cl=""
-    ar.append(AttrRow("Imported CAD",n_cad,0,sn,sm,cl or "---"))
-    sn,sm=contrib(n_img,0,10,0.5)
-    ar.append(AttrRow("Raster Images",n_img,0,sn,sm,"Delete all images" if n_img else "---"))
-    sn,sm=contrib(n_grp,0,5,0.75)
-    ar.append(AttrRow("Model Groups",n_grp,0,sn,sm,"Ungroup all" if n_grp else "---"))
-    sn,sm=contrib(n_rp,0,1,0.5)
-    rp_names=[rp.Name for rp in all_rp if (rp.Name or "").strip().lower() in ("reference plane","")]
-    ar.append(AttrRow("Unnamed Ref Planes",n_rp,0,sn,sm,("; ".join(rp_names[:5])) if rp_names else "---"))
-    sn,sm=contrib(n_ut,0,2,0.75)
-    ar.append(AttrRow("Unused Type Params",n_ut,0,sn,sm,(", ".join(ut[:8])+(" ..." if len(ut)>8 else "")) if ut else "---"))
-    sn,sm=contrib(n_ui,0,2,0.75)
-    ar.append(AttrRow("Unused Inst Params",n_ui,0,sn,sm,(", ".join(ui[:8])+(" ..." if len(ui)>8 else "")) if ui else "---"))
-    sn,sm=contrib(len(ush),0,2,0.5)
-    ar.append(AttrRow("Unused Shared Params",len(ush),0,sn,sm,(", ".join(ush[:6])) if ush else "---"))
-    tp2=max(0,n_tp-n_ut-n_ui)
-    sn2=max(0.,10-n_tp//2)*0.5; sm2=max(0.,10-tp2//2)*0.5
-    ar.append(AttrRow("Total Params",n_tp,tp2,sn2,sm2,"Remove {} unused".format(n_ut+n_ui) if (n_ut+n_ui) else "---"))
-    sn=max(0.,10-n_sh*2)*0.5
-    ar.append(AttrRow("Shared Params",n_sh,"---",sn,sn,"Needed for schedules/tags"))
-    sn=max(0.,10-n_fp*2)*0.75
-    ar.append(AttrRow("Formula Params",n_fp,"---",sn,sn,"Formulas are healthy"))
-    geo_s=_blended(n_f,n_s,n_e)*1.25
-    ar.append(AttrRow("Blended Geo Score",n_f,"---",geo_s,geo_s,"See Geometry section"))
-    sn=max(0.,10-n_nest)*1.25
-    ar.append(AttrRow("Nested Families",n_nest,"---",sn,sn,"See Nested Families section"))
-    geo_rows=_scan_forms(n_f,n_s,n_e)
-    req_rows=_collect_req_params()
-    nest_rows=_collect_nested()
-    subcat_rows=_collect_subcats()
-    rp_rows=_collect_rp_full()
-    view_rows=_collect_views()
-    type_rows=_collect_types()
-    window=XamlReader.Parse(XAML)
-    window.FindName("SubTitle").Text=u"{} . {} types . {} nested . {} geo forms".format(
-        doc.Title, len(type_rows), len(nest_rows), len(geo_rows))
-    window.FindName("ScoreCurrent").Text="{:.1f}".format(cur)
-    window.FindName("ScorePotential").Text="{:.1f}".format(pot)
-    gv=pot-cur
-    window.FindName("ScoreGain").Text="+{:.1f}".format(gv) if gv>0 else "0"
-    window.FindName("LblF").Text=str(n_f); window.FindName("LblS").Text=str(n_s)
-    window.FindName("LblE").Text=str(n_e); window.FindName("LblGS").Text="{:.2f}".format(geo_s)
-    window.FindName("LblGA").Text="---"
-    a_items=ObservableCollection[object]()
-    for r in ar: a_items.Add(r)
-    window.FindName("AttrGrid").ItemsSource=a_items
-    g_items=ObservableCollection[object]()
-    for r in geo_rows: g_items.Add(r)
-    gg=window.FindName("GeoGrid"); gg.ItemsSource=g_items
-    req_items=ObservableCollection[object]()
-    for r in req_rows: req_items.Add(r)
-    window.FindName("ReqGrid").ItemsSource=req_items
-    nest_items=ObservableCollection[object]()
-    for r in nest_rows: nest_items.Add(r)
-    window.FindName("NestGrid").ItemsSource=nest_items
-    subcat_items=ObservableCollection[object]()
-    for r in subcat_rows: subcat_items.Add(r)
-    window.FindName("SubcatGrid").ItemsSource=subcat_items
-    rp_items=ObservableCollection[object]()
-    for r in rp_rows: rp_items.Add(r)
-    window.FindName("RPGrid").ItemsSource=rp_items
-    view_items=ObservableCollection[object]()
-    for r in view_rows: view_items.Add(r)
-    window.FindName("ViewGrid").ItemsSource=view_items
-    type_items=ObservableCollection[object]()
-    for r in type_rows: type_items.Add(r)
-    window.FindName("TypeGrid").ItemsSource=type_items
-    dl=[]
-    if ut: dl.append("UNUSED TYPE ({}):\n  {}".format(len(ut),"\n  ".join(ut)))
-    if ui: dl.append("UNUSED INST ({}):\n  {}".format(len(ui),"\n  ".join(ui)))
-    if ush: dl.append("UNUSED SHARED ({}):\n  {}".format(len(ush),"\n  ".join(ush)))
-    window.FindName("DetailText").Text="\n\n".join(dl) if dl else "No unused parameters found."
-    n_fix=sum(1 for r in a_items if r.HasGain)
-    window.FindName("NavBadge_Overview").Text="  {} fixable".format(n_fix) if n_fix else "  All good"
-    n_file=n_cad+n_img+n_grp
-    window.FindName("NavBadge_File").Text="  {} items".format(n_file) if n_file else "  Clean"
-    n_pu=n_ut+n_ui
-    window.FindName("NavBadge_Params").Text="  {} unused".format(n_pu) if n_pu else "  Clean"
-    n_req=sum(1 for r in req_items if r.HasIssue)
-    window.FindName("NavBadge_ReqParams").Text="  {} empty".format(n_req) if n_req else "  Filled"
-    n_rpu=sum(1 for r in rp_items if r.Status=="Unnamed")
-    window.FindName("NavBadge_RefPlanes").Text="  {} unnamed".format(n_rpu) if n_rpu else "  Named"
-    n_unp=sum(1 for r in nest_items if r.InstanceCount==0)
-    window.FindName("NavBadge_Nested").Text="  {} unplaced".format(n_unp) if n_unp else "  All placed"
-    n_su=sum(1 for r in subcat_items if not r._has_geo)
-    window.FindName("NavBadge_Subcats").Text="  {} unused".format(n_su) if n_su else "  Clean"
-    window.FindName("NavBadge_Types").Text="  {} types".format(len(list(type_items)))
-    n_ve=sum(1 for r in view_items if r.CanDelete)
-    window.FindName("NavBadge_Views").Text="  {} extra".format(n_ve) if n_ve else "  Default"
-    window.FindName("NavBadge_Geometry").Text="  {} faces".format(n_f)
-    from System.Windows import Visibility as WVis
-    PANELS=["Panel_Overview","Panel_File","Panel_Params","Panel_ReqParams",
-            "Panel_RefPlanes","Panel_Nested","Panel_Subcats","Panel_Types",
-            "Panel_Views","Panel_Geometry"]
-    def on_nav(s,e):
-        idx=window.FindName("NavList").SelectedIndex
-        for i,nm in enumerate(PANELS):
-            p=window.FindName(nm)
-            if p: p.Visibility=WVis.Visible if i==idx else WVis.Collapsed
-    window.FindName("NavList").SelectionChanged+=on_nav
-    def _post_undo():
-        try:
-            from Autodesk.Revit.UI import PostableCommand, RevitCommandId
-            undo_id=RevitCommandId.LookupPostableCommandId(PostableCommand.Undo)
-            __revit__.PostCommand(undo_id); return True
-        except: return False
-    def _make_undo_btn(btn_name,status_name):
-        btn=window.FindName(btn_name)
-        if btn: btn.Visibility=WVis.Visible
-        def _do(s,e):
-            ok=_post_undo()
-            st=window.FindName(status_name)
-            if st: st.Text="Undo posted. Close this dialog then check Revit." if ok else "Use Ctrl+Z in Revit."
-            if btn: btn.Visibility=WVis.Collapsed
-        if btn: btn.Click+=_do
-    def _update_row(attr,cur2,min2,per,w):
-        sn2,sm2=contrib(cur2,min2,per,w)
-        for r in a_items:
-            if r.Attr==attr:
-                r.Current=str(cur2); r.Min=str(min2)
-                try: d=cur2-min2; r.ReduceBy=str(d) if d>0 else "---"
-                except: r.ReduceBy="---"
-                r.ScoreNow="{:.1f}".format(sn2); r.ScoreAfter="{:.1f}".format(sm2)
-                g2=sm2-sn2; r.Gain="+{:.1f}".format(g2) if g2>0.05 else "---"
-                r.HasGain=g2>0.05
-        window.FindName("AttrGrid").Items.Refresh()
-    def _refresh_params():
-        _,_,_,ut2,ui2,ush2=_collect_params()
-        _update_row("Unused Type Params",len(ut2),0,2,0.75)
-        _update_row("Unused Inst Params",len(ui2),0,2,0.75)
-        _update_row("Unused Shared Params",len(ush2),0,2,0.5)
-        dl2=[]
-        if ut2: dl2.append("UNUSED TYPE ({}):\n  {}".format(len(ut2),"\n  ".join(ut2)))
-        if ui2: dl2.append("UNUSED INST ({}):\n  {}".format(len(ui2),"\n  ".join(ui2)))
-        if ush2: dl2.append("UNUSED SHARED ({}):\n  {}".format(len(ush2),"\n  ".join(ush2)))
-        window.FindName("DetailText").Text="\n\n".join(dl2) if dl2 else "No unused parameters found."
-        n2=len(ut2)+len(ui2)
-        window.FindName("NavBadge_Params").Text="  {} unused".format(n2) if n2 else "  Clean"
-    def do_purge(s,e):
-        if not _confirm("Purge Unused","Launch Revit's built-in Purge Unused?\nRevit will open its own dialog."): return
-        try:
-            from Autodesk.Revit.UI import PostableCommand, RevitCommandId
-            __revit__.PostCommand(RevitCommandId.LookupPostableCommandId(PostableCommand.PurgeUnused))
-            window.FindName("PerfStatus").Text="Purge Unused launched."
-        except Exception as ex: window.FindName("PerfStatus").Text="Error: {}".format(str(ex)[:80])
-    def do_del_cad(s,e):
-        els=list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements())
-        if not els: window.FindName("PerfStatus").Text="No CAD imports."; return
-        if not _confirm("Delete CAD Imports","Delete {} CAD import(s)?".format(len(els))): return
-        n=0
-        for el in els:
-            try:
-                with Transaction(doc,"Delete CAD Imports") as t: t.Start(); doc.Delete(el.Id); t.Commit(); n+=1
-            except: pass
-        _update_row("Imported CAD",0,0,10,1.25)
-        window.FindName("PerfStatus").Text="Deleted {} CAD import(s).".format(n)
-        _make_undo_btn("BtnUndoPerf","PerfStatus"); _refresh_btn_states()
-    def do_del_images(s,e):
-        try:
-            from Autodesk.Revit.DB import RasterImage
-            els=list(FilteredElementCollector(doc).OfClass(RasterImage).ToElements())
-        except: els=[]
-        if not els: window.FindName("PerfStatus").Text="No raster images."; return
-        if not _confirm("Delete Raster Images","Delete {} embedded image(s)?".format(len(els))): return
-        n=0
-        for el in els:
-            try:
-                with Transaction(doc,"Delete Raster Images") as t: t.Start(); doc.Delete(el.Id); t.Commit(); n+=1
-            except: pass
-        _update_row("Raster Images",0,0,10,0.5)
-        window.FindName("PerfStatus").Text="Deleted {} image(s).".format(n)
-        _make_undo_btn("BtnUndoPerf","PerfStatus"); _refresh_btn_states()
-    def do_ungroup(s,e):
-        grps=list(FilteredElementCollector(doc).OfClass(Group).ToElements())
-        if not grps: window.FindName("PerfStatus").Text="No groups."; return
-        if not _confirm("Ungroup All","Ungroup {} model group(s)?".format(len(grps))): return
-        n=0
-        for grp in grps:
-            try:
-                with Transaction(doc,"Ungroup All Groups") as t: t.Start(); grp.UngroupMembers(); t.Commit(); n+=1
-            except: pass
-        _update_row("Model Groups",0,0,5,0.75)
-        window.FindName("PerfStatus").Text="Ungrouped {} group(s).".format(n)
-        _make_undo_btn("BtnUndoPerf","PerfStatus"); _refresh_btn_states()
-    def _del_by_names(names,label,status_key):
-        if not names: window.FindName(status_key).Text="No {} to delete.".format(label); return
-        if not _confirm("Delete Params","Delete {} {}?\n\nParams:\n{}".format(
-                len(names),label,"\n".join(names[:10])+("\n..." if len(names)>10 else ""))): return
-        fm=doc.FamilyManager; n=0
-        with Transaction(doc,"Delete "+label) as t:
-            t.Start()
-            for p in list(fm.Parameters):
-                if p.Definition.Name in names:
-                    try: fm.RemoveParameter(p); n+=1
-                    except: pass
-            t.Commit()
-        _refresh_params()
-        window.FindName(status_key).Text="Deleted {}.".format(n)
-        _make_undo_btn("BtnUndoParam","ParamStatus"); _refresh_btn_states()
-    def do_del_type(s,e):
-        _,_,_,ut2,_,_=_collect_params(); _del_by_names(ut2,"unused type params","ParamStatus")
-    def do_del_inst(s,e):
-        _,_,_,_,ui2,_=_collect_params(); _del_by_names(ui2,"unused inst params","ParamStatus")
-    def do_del_shared(s,e):
-        _,_,_,_,_,ush2=_collect_params(); _del_by_names(ush2,"unused shared params","ParamStatus")
-    def do_apply_req(s,e):
-        fm=doc.FamilyManager
-        all_p={p.Definition.Name: p for p in fm.Parameters}
-        applied=skipped=0
-        with Transaction(doc,"Apply Required Params") as t:
-            t.Start()
-            for row in req_items:
-                if not row._exists: skipped+=1; continue
-                p=all_p.get(row.Name)
-                if p is None: skipped+=1; continue
-                val=(row.Value or "").strip()
-                for ft in fm.Types:
-                    try: fm.CurrentType=ft; fm.Set(p,val); applied+=1
-                    except: pass
-            t.Commit()
-        new_rows=_collect_req_params()
-        req_items.Clear()
-        for r in new_rows: req_items.Add(r)
-        window.FindName("ReqGrid").Items.Refresh()
-        n_req2=sum(1 for r in req_items if r.HasIssue)
-        window.FindName("NavBadge_ReqParams").Text="  {} empty".format(n_req2) if n_req2 else "  Filled"
-        msg="Applied to {} type/param combinations.".format(applied)
-        if skipped: msg+=" {} skipped.".format(skipped)
-        window.FindName("ReqStatus").Text=msg
-    def do_rename_rp(s,e):
-        changes=[(r.ElemId,r.Name) for r in rp_items if r.Name!=r.OriginalName]
-        if not changes: window.FindName("RPStatus").Text="No name changes to apply."; return
-        n=0
-        for eid,new_name in changes:
-            try:
-                rp=doc.GetElement(ElementId(eid))
-                with Transaction(doc,"Rename Ref Plane") as t: t.Start(); rp.Name=new_name; t.Commit(); n+=1
-            except: pass
-        rp_items.Clear()
-        for r in _collect_rp_full(): rp_items.Add(r)
-        window.FindName("RPGrid").Items.Refresh()
-        n_rpu2=sum(1 for r in rp_items if r.Status=="Unnamed")
-        _update_row("Unnamed Ref Planes",n_rpu2,0,1,0.5)
-        window.FindName("NavBadge_RefPlanes").Text="  {} unnamed".format(n_rpu2) if n_rpu2 else "  Named"
-        window.FindName("RPStatus").Text="Renamed {}.".format(n)
-    def do_del_sel_rp(s,e):
-        sel=[r for r in rp_items if r.Selected]
-        if not sel: window.FindName("RPStatus").Text="Nothing selected."; return
-        if not _confirm("Delete Reference Planes","Delete {} selected reference plane(s)?\nPlanes in use will be skipped.".format(len(sel))): return
-        deleted=blocked=0
-        for row in sel:
-            try:
-                with Transaction(doc,"Delete Ref Plane") as t: t.Start(); doc.Delete(ElementId(row.ElemId)); t.Commit(); deleted+=1
-            except: blocked+=1
-        rp_items.Clear()
-        for r in _collect_rp_full(): rp_items.Add(r)
-        window.FindName("RPGrid").Items.Refresh()
-        n_rpu2=sum(1 for r in rp_items if r.Status=="Unnamed")
-        _update_row("Unnamed Ref Planes",n_rpu2,0,1,0.5)
-        msg="Deleted {}.".format(deleted)
-        if blocked: msg+=" {} blocked (in use).".format(blocked)
-        window.FindName("RPStatus").Text=msg
-        _make_undo_btn("BtnUndoRP","RPStatus"); _refresh_btn_states()
-    def do_purge_nest(s,e):
-        to_purge=[r for r in nest_items if r.InstanceCount==0]
-        if not to_purge: window.FindName("NestStatus").Text="No unplaced nested families."; return
-        names="\n".join(r.FamilyName for r in to_purge[:8])
-        if len(to_purge)>8: names+="\n..."
-        if not _confirm("Purge Unplaced","Remove {} unplaced nested families?\n\n{}".format(len(to_purge),names)): return
-        deleted=blocked=0
-        for row in to_purge:
-            try:
-                with Transaction(doc,"Purge Nested Family") as t: t.Start(); doc.Delete(ElementId(row.FamId)); t.Commit(); deleted+=1
-            except: blocked+=1
-        nest_items.Clear()
-        for r in _collect_nested(): nest_items.Add(r)
-        window.FindName("NestGrid").Items.Refresh()
-        n_unp2=sum(1 for r in nest_items if r.InstanceCount==0)
-        window.FindName("NavBadge_Nested").Text="  {} unplaced".format(n_unp2) if n_unp2 else "  All placed"
-        msg="Removed {}.".format(deleted)
-        if blocked: msg+=" {} blocked.".format(blocked)
-        window.FindName("NestStatus").Text=msg
-        _make_undo_btn("BtnUndoNest","NestStatus"); _refresh_btn_states()
-    def do_del_subcat(s,e):
-        to_del=[r for r in subcat_items if not r._has_geo]
-        if not to_del: window.FindName("SubcatStatus").Text="No unused subcategories."; return
-        if not _confirm("Delete Subcategories","Delete {} unused subcategories?".format(len(to_del))): return
-        deleted=blocked=0
-        for row in to_del:
-            try:
-                with Transaction(doc,"Delete Subcategory") as t: t.Start(); doc.Delete(ElementId(row.SubcatId)); t.Commit(); deleted+=1
-            except: blocked+=1
-        subcat_items.Clear()
-        for r in _collect_subcats(): subcat_items.Add(r)
-        window.FindName("SubcatGrid").Items.Refresh()
-        msg="Deleted {}.".format(deleted)
-        if blocked: msg+=" {} blocked.".format(blocked)
-        window.FindName("SubcatStatus").Text=msg
-        _make_undo_btn("BtnUndoSubcat","SubcatStatus")
-    def do_del_types(s,e):
-        sel=[r for r in type_items if r.Selected]
-        if not sel: window.FindName("TypeStatus").Text="Nothing selected."; return
-        fm=doc.FamilyManager
-        if len(list(fm.Types))-len(sel)<1:
-            window.FindName("TypeStatus").Text="Cannot delete all types."; return
-        names_to_del=set(r.TypeName for r in sel)
-        if not _confirm("Delete Types","Delete {} type(s)?\n\n{}".format(len(sel),"\n".join(list(names_to_del)[:8]))): return
-        deleted=blocked=0
-        with Transaction(doc,"Delete Family Types") as t:
-            t.Start()
-            for ft in list(fm.Types):
-                if (ft.Name or "(Default)") in names_to_del:
-                    try: fm.CurrentType=ft; fm.DeleteCurrentType(); deleted+=1
-                    except: blocked+=1
-            t.Commit()
-        type_items.Clear()
-        for r in _collect_types(): type_items.Add(r)
-        window.FindName("TypeGrid").Items.Refresh()
-        window.FindName("NavBadge_Types").Text="  {} types".format(len(list(type_items)))
-        msg="Deleted {}.".format(deleted)
-        if blocked: msg+=" {} blocked.".format(blocked)
-        window.FindName("TypeStatus").Text=msg
-        _make_undo_btn("BtnUndoTypes","TypeStatus"); _refresh_btn_states()
-    def do_del_views(s,e):
-        sel=[r for r in view_items if r.Selected]
-        if not sel: window.FindName("ViewStatus").Text="Nothing selected."; return
-        non_default=[r for r in sel if r.CanDelete]
-        if not non_default: window.FindName("ViewStatus").Text="All selected are defaults."; return
-        if not _confirm("Delete Views","Delete {} view(s)? Default views will be skipped.".format(len(non_default))): return
-        deleted=blocked=0
-        for row in non_default:
-            try:
-                with Transaction(doc,"Delete View") as t: t.Start(); doc.Delete(ElementId(row.ElemId)); t.Commit(); deleted+=1
-            except: blocked+=1
-        view_items.Clear()
-        for r in _collect_views(): view_items.Add(r)
-        window.FindName("ViewGrid").Items.Refresh()
-        n_ve2=sum(1 for r in view_items if r.CanDelete)
-        window.FindName("NavBadge_Views").Text="  {} extra".format(n_ve2) if n_ve2 else "  Default"
-        msg="Deleted {}.".format(deleted)
-        if blocked: msg+=" {} blocked.".format(blocked)
-        window.FindName("ViewStatus").Text=msg
-        _make_undo_btn("BtnUndoViews","ViewStatus")
-    def _geo_preview(s=None,e=None):
-        sel=[r for r in g_items if r.Selected]
-        if not sel: window.FindName("LblGA").Text="---"; return
-        rf=sum(r.Faces for r in sel); rs=sum(r.Solids for r in sel); re=sum(r.Edges for r in sel)
-        window.FindName("LblGA").Text="{:.2f}".format(
-            _blended(max(0,n_f-rf),max(0,n_s-rs),max(0,n_e-re))*1.25)
-    gg.CellEditEnding+=lambda s,e: _geo_preview()
-    def geo_all(s,e):
-        for r in g_items: r.Selected=True
-        gg.Items.Refresh(); _geo_preview()
-    def geo_clear(s,e):
-        for r in g_items: r.Selected=False
-        gg.Items.Refresh(); window.FindName("LblGA").Text="---"
-    def geo_delete(s,e):
-        sel=[r for r in g_items if r.Selected]
-        if not sel: window.FindName("GeoStatus").Text="Nothing selected."; return
-        if not _confirm("Delete Geometry","Delete {} selected form(s)? This is permanent.".format(len(sel))): return
-        deleted=blocked=0
-        for row in sel:
-            try:
-                with Transaction(doc,"Delete Geo") as t:
-                    t.Start()
-                    from Autodesk.Revit.DB import ElementId as EId
-                    doc.Delete(EId(row.ElemId)); t.Commit(); deleted+=1
-            except: blocked+=1
-        nf2,ns2,ne2=_total_geom()
-        window.FindName("LblF").Text=str(nf2); window.FindName("LblS").Text=str(ns2)
-        window.FindName("LblE").Text=str(ne2)
-        gs2=_blended(nf2,ns2,ne2)*1.25
-        window.FindName("LblGS").Text="{:.2f}".format(gs2); window.FindName("LblGA").Text="---"
-        for r in a_items:
-            if r.Attr=="Blended Geo Score":
-                r.Current=str(nf2); r.ScoreNow="{:.1f}".format(gs2); r.ScoreAfter="{:.1f}".format(gs2)
-        window.FindName("AttrGrid").Items.Refresh()
-        ng=_scan_forms(nf2,ns2,ne2); g_items.Clear()
-        for r in ng: g_items.Add(r)
-        gg.Items.Refresh()
-        window.FindName("NavBadge_Geometry").Text="  {} faces".format(nf2)
-        msg="Deleted {} form(s).".format(deleted)
-        if blocked: msg+=" {} blocked (constrained).".format(blocked)
-        window.FindName("GeoStatus").Text=msg
-        _make_undo_btn("BtnUndoGeo","GeoStatus"); _refresh_btn_states()
-    window.FindName("BtnPurge").Click      += do_purge
-    window.FindName("BtnDelCAD").Click     += do_del_cad
-    window.FindName("BtnDelImages").Click  += do_del_images
-    window.FindName("BtnUngroup").Click    += do_ungroup
-    window.FindName("BtnDelType").Click    += do_del_type
-    window.FindName("BtnDelInst").Click    += do_del_inst
-    window.FindName("BtnDelShared").Click  += do_del_shared
-    window.FindName("BtnApplyReq").Click   += do_apply_req
-    window.FindName("BtnRenameRP").Click   += do_rename_rp
-    window.FindName("BtnDelSelRP").Click   += do_del_sel_rp
 
-    def on_rp_row_click(s, e):
-        row = window.FindName("RPGrid").SelectedItem
-        if row is None: return
-        try:
-            uid = __revit__.ActiveUIDocument
-            if uid is None or not uid.Document.Equals(doc): return
-            from System.Collections.Generic import List as CsList
-            ids = CsList[ElementId]()
-            ids.Add(ElementId(row.ElemId))
-            uid.Selection.SetElementIds(ids)
-        except: pass
-    window.FindName("RPGrid").SelectionChanged += on_rp_row_click
-    window.FindName("BtnPurgeNest").Click  += do_purge_nest
-    window.FindName("BtnDelSubcat").Click  += do_del_subcat
-    window.FindName("BtnDelTypes").Click   += do_del_types
-    window.FindName("BtnDelViews").Click   += do_del_views
-    window.FindName("BtnGA").Click         += geo_all
-    window.FindName("BtnGC").Click         += geo_clear
-    window.FindName("BtnGD").Click         += geo_delete
-    window.FindName("BtnClose").Click      += lambda s,e: window.Close()
-    def _refresh_btn_states():
-        _,_,_,ut2,ui2,ush2=_collect_params()
-        cad_now=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
+# ── OPTIMIZER RUNNER ─────────────────────────────────────────────────────────
+def _run_optimizer(target_doc):
+    global doc
+    doc = target_doc
+    _next = [None]  # stores nested family doc to open after window closes
+
+        try: nbytes=os.path.getsize(doc.PathName) if doc.PathName else 0
+        except: nbytes=0
+        sz=nbytes/1000000.0
+        n_cad=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
+        all_rp=list(FilteredElementCollector(doc).OfClass(ReferencePlane).ToElements())
+        n_rp=sum(1 for rp in all_rp if (rp.Name or "").strip().lower() in ("reference plane",""))
         try:
             from Autodesk.Revit.DB import RasterImage
-            img_now=len(list(FilteredElementCollector(doc).OfClass(RasterImage).ToElements()))
-        except: img_now=0
-        grp_now=len(list(FilteredElementCollector(doc).OfClass(Group).ToElements()))
+            n_img=len(list(FilteredElementCollector(doc).OfClass(RasterImage).ToElements()))
+        except: n_img=0
+        n_nest=len(list(FilteredElementCollector(doc).OfClass(Family).ToElements()))
+        n_grp=len(list(FilteredElementCollector(doc).OfClass(Group).ToElements()))
+        n_s,n_f,n_e=_total_geom()
+        n_tp,n_sh,n_fp,ut,ui,ush=_collect_params()
+        n_ut=len(ut); n_ui=len(ui)
+        cur=_final(sz,n_cad,n_img,n_nest,n_grp,n_rp,n_ut,n_ui,n_tp,n_sh,n_fp,n_f,n_s,n_e)
+        pot=_final(sz,0,0,n_nest,0,0,0,0,max(0,n_tp-n_ut-n_ui),n_sh,n_fp,n_f,n_s,n_e)
+        ar=[]
+        sn,sm=contrib(sz,0,1,1.25)
+        ar.append(AttrRow("File Size","{:.2f} MB".format(sz),"Purge",sn,sm,"Run Purge Unused"))
+        sn,sm=contrib(n_cad,0,10,1.25)
+        try: cl="; ".join(el.Category.Name if el.Category else "CAD" for el in FilteredElementCollector(doc).OfClass(ImportInstance).ToElements())
+        except: cl=""
+        ar.append(AttrRow("Imported CAD",n_cad,0,sn,sm,cl or "---"))
+        sn,sm=contrib(n_img,0,10,0.5)
+        ar.append(AttrRow("Raster Images",n_img,0,sn,sm,"Delete all images" if n_img else "---"))
+        sn,sm=contrib(n_grp,0,5,0.75)
+        ar.append(AttrRow("Model Groups",n_grp,0,sn,sm,"Ungroup all" if n_grp else "---"))
+        sn,sm=contrib(n_rp,0,1,0.5)
+        rp_names=[rp.Name for rp in all_rp if (rp.Name or "").strip().lower() in ("reference plane","")]
+        ar.append(AttrRow("Unnamed Ref Planes",n_rp,0,sn,sm,("; ".join(rp_names[:5])) if rp_names else "---"))
+        sn,sm=contrib(n_ut,0,2,0.75)
+        ar.append(AttrRow("Unused Type Params",n_ut,0,sn,sm,(", ".join(ut[:8])+(" ..." if len(ut)>8 else "")) if ut else "---"))
+        sn,sm=contrib(n_ui,0,2,0.75)
+        ar.append(AttrRow("Unused Inst Params",n_ui,0,sn,sm,(", ".join(ui[:8])+(" ..." if len(ui)>8 else "")) if ui else "---"))
+        sn,sm=contrib(len(ush),0,2,0.5)
+        ar.append(AttrRow("Unused Shared Params",len(ush),0,sn,sm,(", ".join(ush[:6])) if ush else "---"))
+        tp2=max(0,n_tp-n_ut-n_ui)
+        sn2=max(0.,10-n_tp//2)*0.5; sm2=max(0.,10-tp2//2)*0.5
+        ar.append(AttrRow("Total Params",n_tp,tp2,sn2,sm2,"Remove {} unused".format(n_ut+n_ui) if (n_ut+n_ui) else "---"))
+        sn=max(0.,10-n_sh*2)*0.5
+        ar.append(AttrRow("Shared Params",n_sh,"---",sn,sn,"Needed for schedules/tags"))
+        sn=max(0.,10-n_fp*2)*0.75
+        ar.append(AttrRow("Formula Params",n_fp,"---",sn,sn,"Formulas are healthy"))
+        geo_s=_blended(n_f,n_s,n_e)*1.25
+        ar.append(AttrRow("Blended Geo Score",n_f,"---",geo_s,geo_s,"See Geometry section"))
+        sn=max(0.,10-n_nest)*1.25
+        ar.append(AttrRow("Nested Families",n_nest,"---",sn,sn,"See Nested Families section"))
+        geo_rows=_scan_forms(n_f,n_s,n_e)
+        req_rows=_collect_req_params()
+        nest_rows=_collect_nested()
+        subcat_rows=_collect_subcats()
+        rp_rows=_collect_rp_full()
+        view_rows=_collect_views()
+        type_rows=_collect_types()
+        window=XamlReader.Parse(XAML)
+        window.FindName("SubTitle").Text=u"{} . {} types . {} nested . {} geo forms".format(
+            doc.Title, len(type_rows), len(nest_rows), len(geo_rows))
+        window.FindName("ScoreCurrent").Text="{:.1f}".format(cur)
+        window.FindName("ScorePotential").Text="{:.1f}".format(pot)
+        gv=pot-cur
+        window.FindName("ScoreGain").Text="+{:.1f}".format(gv) if gv>0 else "0"
+        window.FindName("LblF").Text=str(n_f); window.FindName("LblS").Text=str(n_s)
+        window.FindName("LblE").Text=str(n_e); window.FindName("LblGS").Text="{:.2f}".format(geo_s)
+        window.FindName("LblGA").Text="---"
+        a_items=ObservableCollection[object]()
+        for r in ar: a_items.Add(r)
+        window.FindName("AttrGrid").ItemsSource=a_items
+        g_items=ObservableCollection[object]()
+        for r in geo_rows: g_items.Add(r)
+        gg=window.FindName("GeoGrid"); gg.ItemsSource=g_items
+        req_items=ObservableCollection[object]()
+        for r in req_rows: req_items.Add(r)
+        window.FindName("ReqGrid").ItemsSource=req_items
+        nest_items=ObservableCollection[object]()
+        for r in nest_rows: nest_items.Add(r)
+        window.FindName("NestGrid").ItemsSource=nest_items
+        subcat_items=ObservableCollection[object]()
+        for r in subcat_rows: subcat_items.Add(r)
+        window.FindName("SubcatGrid").ItemsSource=subcat_items
+        rp_items=ObservableCollection[object]()
+        for r in rp_rows: rp_items.Add(r)
+        window.FindName("RPGrid").ItemsSource=rp_items
+        view_items=ObservableCollection[object]()
+        for r in view_rows: view_items.Add(r)
+        window.FindName("ViewGrid").ItemsSource=view_items
+        type_items=ObservableCollection[object]()
+        for r in type_rows: type_items.Add(r)
+        window.FindName("TypeGrid").ItemsSource=type_items
+        dl=[]
+        if ut: dl.append("UNUSED TYPE ({}):\n  {}".format(len(ut),"\n  ".join(ut)))
+        if ui: dl.append("UNUSED INST ({}):\n  {}".format(len(ui),"\n  ".join(ui)))
+        if ush: dl.append("UNUSED SHARED ({}):\n  {}".format(len(ush),"\n  ".join(ush)))
+        window.FindName("DetailText").Text="\n\n".join(dl) if dl else "No unused parameters found."
+        n_fix=sum(1 for r in a_items if r.HasGain)
+        window.FindName("NavBadge_Overview").Text="  {} fixable".format(n_fix) if n_fix else "  All good"
+        n_file=n_cad+n_img+n_grp
+        window.FindName("NavBadge_File").Text="  {} items".format(n_file) if n_file else "  Clean"
+        n_pu=n_ut+n_ui
+        window.FindName("NavBadge_Params").Text="  {} unused".format(n_pu) if n_pu else "  Clean"
+        n_req=sum(1 for r in req_items if r.HasIssue)
+        window.FindName("NavBadge_ReqParams").Text="  {} empty".format(n_req) if n_req else "  Filled"
+        n_rpu=sum(1 for r in rp_items if r.Status=="Unnamed")
+        window.FindName("NavBadge_RefPlanes").Text="  {} unnamed".format(n_rpu) if n_rpu else "  Named"
         n_unp=sum(1 for r in nest_items if r.InstanceCount==0)
+        window.FindName("NavBadge_Nested").Text="  {} unplaced".format(n_unp) if n_unp else "  All placed"
         n_su=sum(1 for r in subcat_items if not r._has_geo)
-        window.FindName("BtnDelCAD").IsEnabled     = cad_now > 0
-        window.FindName("BtnDelImages").IsEnabled  = img_now > 0
-        window.FindName("BtnUngroup").IsEnabled    = grp_now > 0
-        window.FindName("BtnDelType").IsEnabled    = len(ut2) > 0
-        window.FindName("BtnDelInst").IsEnabled    = len(ui2) > 0
-        window.FindName("BtnDelShared").IsEnabled  = len(ush2) > 0
-        window.FindName("BtnDelSelRP").IsEnabled   = len(list(rp_items)) > 0
-        window.FindName("BtnRenameRP").IsEnabled   = len(list(rp_items)) > 0
-        window.FindName("BtnPurgeNest").IsEnabled  = n_unp > 0
-        window.FindName("BtnDelSubcat").IsEnabled  = n_su > 0
-        window.FindName("BtnDelTypes").IsEnabled   = len(list(type_items)) > 1
-        window.FindName("BtnDelViews").IsEnabled   = len(list(view_items)) > 0
-        window.FindName("BtnGD").IsEnabled         = len(list(g_items)) > 0
+        window.FindName("NavBadge_Subcats").Text="  {} unused".format(n_su) if n_su else "  Clean"
+        window.FindName("NavBadge_Types").Text="  {} types".format(len(list(type_items)))
+        n_ve=sum(1 for r in view_items if r.CanDelete)
+        window.FindName("NavBadge_Views").Text="  {} extra".format(n_ve) if n_ve else "  Default"
+        window.FindName("NavBadge_Geometry").Text="  {} faces".format(n_f)
+        from System.Windows import Visibility as WVis
+        PANELS=["Panel_Overview","Panel_File","Panel_Params","Panel_ReqParams",
+                "Panel_RefPlanes","Panel_Nested","Panel_Subcats","Panel_Types",
+                "Panel_Views","Panel_Geometry"]
+        def on_nav(s,e):
+            idx=window.FindName("NavList").SelectedIndex
+            for i,nm in enumerate(PANELS):
+                p=window.FindName(nm)
+                if p: p.Visibility=WVis.Visible if i==idx else WVis.Collapsed
+        window.FindName("NavList").SelectionChanged+=on_nav
+        def _post_undo():
+            try:
+                from Autodesk.Revit.UI import PostableCommand, RevitCommandId
+                undo_id=RevitCommandId.LookupPostableCommandId(PostableCommand.Undo)
+                __revit__.PostCommand(undo_id); return True
+            except: return False
+        def _make_undo_btn(btn_name,status_name):
+            btn=window.FindName(btn_name)
+            if btn: btn.Visibility=WVis.Visible
+            def _do(s,e):
+                ok=_post_undo()
+                st=window.FindName(status_name)
+                if st: st.Text="Undo posted. Close this dialog then check Revit." if ok else "Use Ctrl+Z in Revit."
+                if btn: btn.Visibility=WVis.Collapsed
+            if btn: btn.Click+=_do
+        def _update_row(attr,cur2,min2,per,w):
+            sn2,sm2=contrib(cur2,min2,per,w)
+            for r in a_items:
+                if r.Attr==attr:
+                    r.Current=str(cur2); r.Min=str(min2)
+                    try: d=cur2-min2; r.ReduceBy=str(d) if d>0 else "---"
+                    except: r.ReduceBy="---"
+                    r.ScoreNow="{:.1f}".format(sn2); r.ScoreAfter="{:.1f}".format(sm2)
+                    g2=sm2-sn2; r.Gain="+{:.1f}".format(g2) if g2>0.05 else "---"
+                    r.HasGain=g2>0.05
+            window.FindName("AttrGrid").Items.Refresh()
+        def _refresh_params():
+            _,_,_,ut2,ui2,ush2=_collect_params()
+            _update_row("Unused Type Params",len(ut2),0,2,0.75)
+            _update_row("Unused Inst Params",len(ui2),0,2,0.75)
+            _update_row("Unused Shared Params",len(ush2),0,2,0.5)
+            dl2=[]
+            if ut2: dl2.append("UNUSED TYPE ({}):\n  {}".format(len(ut2),"\n  ".join(ut2)))
+            if ui2: dl2.append("UNUSED INST ({}):\n  {}".format(len(ui2),"\n  ".join(ui2)))
+            if ush2: dl2.append("UNUSED SHARED ({}):\n  {}".format(len(ush2),"\n  ".join(ush2)))
+            window.FindName("DetailText").Text="\n\n".join(dl2) if dl2 else "No unused parameters found."
+            n2=len(ut2)+len(ui2)
+            window.FindName("NavBadge_Params").Text="  {} unused".format(n2) if n2 else "  Clean"
+        def do_purge(s,e):
+            if not _confirm("Purge Unused","Launch Revit's built-in Purge Unused?\nRevit will open its own dialog."): return
+            try:
+                from Autodesk.Revit.UI import PostableCommand, RevitCommandId
+                __revit__.PostCommand(RevitCommandId.LookupPostableCommandId(PostableCommand.PurgeUnused))
+                window.FindName("PerfStatus").Text="Purge Unused launched."
+            except Exception as ex: window.FindName("PerfStatus").Text="Error: {}".format(str(ex)[:80])
+        def do_del_cad(s,e):
+            els=list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements())
+            if not els: window.FindName("PerfStatus").Text="No CAD imports."; return
+            if not _confirm("Delete CAD Imports","Delete {} CAD import(s)?".format(len(els))): return
+            n=0
+            for el in els:
+                try:
+                    with Transaction(doc,"Delete CAD Imports") as t: t.Start(); doc.Delete(el.Id); t.Commit(); n+=1
+                except: pass
+            _update_row("Imported CAD",0,0,10,1.25)
+            window.FindName("PerfStatus").Text="Deleted {} CAD import(s).".format(n)
+            _make_undo_btn("BtnUndoPerf","PerfStatus"); _refresh_btn_states()
+        def do_del_images(s,e):
+            try:
+                from Autodesk.Revit.DB import RasterImage
+                els=list(FilteredElementCollector(doc).OfClass(RasterImage).ToElements())
+            except: els=[]
+            if not els: window.FindName("PerfStatus").Text="No raster images."; return
+            if not _confirm("Delete Raster Images","Delete {} embedded image(s)?".format(len(els))): return
+            n=0
+            for el in els:
+                try:
+                    with Transaction(doc,"Delete Raster Images") as t: t.Start(); doc.Delete(el.Id); t.Commit(); n+=1
+                except: pass
+            _update_row("Raster Images",0,0,10,0.5)
+            window.FindName("PerfStatus").Text="Deleted {} image(s).".format(n)
+            _make_undo_btn("BtnUndoPerf","PerfStatus"); _refresh_btn_states()
+        def do_ungroup(s,e):
+            grps=list(FilteredElementCollector(doc).OfClass(Group).ToElements())
+            if not grps: window.FindName("PerfStatus").Text="No groups."; return
+            if not _confirm("Ungroup All","Ungroup {} model group(s)?".format(len(grps))): return
+            n=0
+            for grp in grps:
+                try:
+                    with Transaction(doc,"Ungroup All Groups") as t: t.Start(); grp.UngroupMembers(); t.Commit(); n+=1
+                except: pass
+            _update_row("Model Groups",0,0,5,0.75)
+            window.FindName("PerfStatus").Text="Ungrouped {} group(s).".format(n)
+            _make_undo_btn("BtnUndoPerf","PerfStatus"); _refresh_btn_states()
+        def _del_by_names(names,label,status_key):
+            if not names: window.FindName(status_key).Text="No {} to delete.".format(label); return
+            if not _confirm("Delete Params","Delete {} {}?\n\nParams:\n{}".format(
+                    len(names),label,"\n".join(names[:10])+("\n..." if len(names)>10 else ""))): return
+            fm=doc.FamilyManager; n=0
+            with Transaction(doc,"Delete "+label) as t:
+                t.Start()
+                for p in list(fm.Parameters):
+                    if p.Definition.Name in names:
+                        try: fm.RemoveParameter(p); n+=1
+                        except: pass
+                t.Commit()
+            _refresh_params()
+            window.FindName(status_key).Text="Deleted {}.".format(n)
+            _make_undo_btn("BtnUndoParam","ParamStatus"); _refresh_btn_states()
+        def do_del_type(s,e):
+            _,_,_,ut2,_,_=_collect_params(); _del_by_names(ut2,"unused type params","ParamStatus")
+        def do_del_inst(s,e):
+            _,_,_,_,ui2,_=_collect_params(); _del_by_names(ui2,"unused inst params","ParamStatus")
+        def do_del_shared(s,e):
+            _,_,_,_,_,ush2=_collect_params(); _del_by_names(ush2,"unused shared params","ParamStatus")
+        def do_apply_req(s,e):
+            fm=doc.FamilyManager
+            all_p={p.Definition.Name: p for p in fm.Parameters}
+            applied=skipped=0
+            with Transaction(doc,"Apply Required Params") as t:
+                t.Start()
+                for row in req_items:
+                    if not row._exists: skipped+=1; continue
+                    p=all_p.get(row.Name)
+                    if p is None: skipped+=1; continue
+                    val=(row.Value or "").strip()
+                    for ft in fm.Types:
+                        try: fm.CurrentType=ft; fm.Set(p,val); applied+=1
+                        except: pass
+                t.Commit()
+            new_rows=_collect_req_params()
+            req_items.Clear()
+            for r in new_rows: req_items.Add(r)
+            window.FindName("ReqGrid").Items.Refresh()
+            n_req2=sum(1 for r in req_items if r.HasIssue)
+            window.FindName("NavBadge_ReqParams").Text="  {} empty".format(n_req2) if n_req2 else "  Filled"
+            msg="Applied to {} type/param combinations.".format(applied)
+            if skipped: msg+=" {} skipped.".format(skipped)
+            window.FindName("ReqStatus").Text=msg
+        def do_rename_rp(s,e):
+            changes=[(r.ElemId,r.Name) for r in rp_items if r.Name!=r.OriginalName]
+            if not changes: window.FindName("RPStatus").Text="No name changes to apply."; return
+            n=0
+            for eid,new_name in changes:
+                try:
+                    rp=doc.GetElement(ElementId(eid))
+                    with Transaction(doc,"Rename Ref Plane") as t: t.Start(); rp.Name=new_name; t.Commit(); n+=1
+                except: pass
+            rp_items.Clear()
+            for r in _collect_rp_full(): rp_items.Add(r)
+            window.FindName("RPGrid").Items.Refresh()
+            n_rpu2=sum(1 for r in rp_items if r.Status=="Unnamed")
+            _update_row("Unnamed Ref Planes",n_rpu2,0,1,0.5)
+            window.FindName("NavBadge_RefPlanes").Text="  {} unnamed".format(n_rpu2) if n_rpu2 else "  Named"
+            window.FindName("RPStatus").Text="Renamed {}.".format(n)
+        def do_del_sel_rp(s,e):
+            sel=[r for r in rp_items if r.Selected]
+            if not sel: window.FindName("RPStatus").Text="Nothing selected."; return
+            if not _confirm("Delete Reference Planes","Delete {} selected reference plane(s)?\nPlanes in use will be skipped.".format(len(sel))): return
+            deleted=blocked=0
+            for row in sel:
+                try:
+                    with Transaction(doc,"Delete Ref Plane") as t: t.Start(); doc.Delete(ElementId(row.ElemId)); t.Commit(); deleted+=1
+                except: blocked+=1
+            rp_items.Clear()
+            for r in _collect_rp_full(): rp_items.Add(r)
+            window.FindName("RPGrid").Items.Refresh()
+            n_rpu2=sum(1 for r in rp_items if r.Status=="Unnamed")
+            _update_row("Unnamed Ref Planes",n_rpu2,0,1,0.5)
+            msg="Deleted {}.".format(deleted)
+            if blocked: msg+=" {} blocked (in use).".format(blocked)
+            window.FindName("RPStatus").Text=msg
+            _make_undo_btn("BtnUndoRP","RPStatus"); _refresh_btn_states()
+        def do_purge_nest(s,e):
+            to_purge=[r for r in nest_items if r.InstanceCount==0]
+            if not to_purge: window.FindName("NestStatus").Text="No unplaced nested families."; return
+            names="\n".join(r.FamilyName for r in to_purge[:8])
+            if len(to_purge)>8: names+="\n..."
+            if not _confirm("Purge Unplaced","Remove {} unplaced nested families?\n\n{}".format(len(to_purge),names)): return
+            deleted=blocked=0
+            for row in to_purge:
+                try:
+                    with Transaction(doc,"Purge Nested Family") as t: t.Start(); doc.Delete(ElementId(row.FamId)); t.Commit(); deleted+=1
+                except: blocked+=1
+            nest_items.Clear()
+            for r in _collect_nested(): nest_items.Add(r)
+            window.FindName("NestGrid").Items.Refresh()
+            n_unp2=sum(1 for r in nest_items if r.InstanceCount==0)
+            window.FindName("NavBadge_Nested").Text="  {} unplaced".format(n_unp2) if n_unp2 else "  All placed"
+            msg="Removed {}.".format(deleted)
+            if blocked: msg+=" {} blocked.".format(blocked)
+            window.FindName("NestStatus").Text=msg
+            _make_undo_btn("BtnUndoNest","NestStatus"); _refresh_btn_states()
+        def do_del_subcat(s,e):
+            to_del=[r for r in subcat_items if not r._has_geo]
+            if not to_del: window.FindName("SubcatStatus").Text="No unused subcategories."; return
+            if not _confirm("Delete Subcategories","Delete {} unused subcategories?".format(len(to_del))): return
+            deleted=blocked=0
+            for row in to_del:
+                try:
+                    with Transaction(doc,"Delete Subcategory") as t: t.Start(); doc.Delete(ElementId(row.SubcatId)); t.Commit(); deleted+=1
+                except: blocked+=1
+            subcat_items.Clear()
+            for r in _collect_subcats(): subcat_items.Add(r)
+            window.FindName("SubcatGrid").Items.Refresh()
+            msg="Deleted {}.".format(deleted)
+            if blocked: msg+=" {} blocked.".format(blocked)
+            window.FindName("SubcatStatus").Text=msg
+            _make_undo_btn("BtnUndoSubcat","SubcatStatus")
+        def do_del_types(s,e):
+            sel=[r for r in type_items if r.Selected]
+            if not sel: window.FindName("TypeStatus").Text="Nothing selected."; return
+            fm=doc.FamilyManager
+            if len(list(fm.Types))-len(sel)<1:
+                window.FindName("TypeStatus").Text="Cannot delete all types."; return
+            names_to_del=set(r.TypeName for r in sel)
+            if not _confirm("Delete Types","Delete {} type(s)?\n\n{}".format(len(sel),"\n".join(list(names_to_del)[:8]))): return
+            deleted=blocked=0
+            with Transaction(doc,"Delete Family Types") as t:
+                t.Start()
+                for ft in list(fm.Types):
+                    if (ft.Name or "(Default)") in names_to_del:
+                        try: fm.CurrentType=ft; fm.DeleteCurrentType(); deleted+=1
+                        except: blocked+=1
+                t.Commit()
+            type_items.Clear()
+            for r in _collect_types(): type_items.Add(r)
+            window.FindName("TypeGrid").Items.Refresh()
+            window.FindName("NavBadge_Types").Text="  {} types".format(len(list(type_items)))
+            msg="Deleted {}.".format(deleted)
+            if blocked: msg+=" {} blocked.".format(blocked)
+            window.FindName("TypeStatus").Text=msg
+            _make_undo_btn("BtnUndoTypes","TypeStatus"); _refresh_btn_states()
+        def do_del_views(s,e):
+            sel=[r for r in view_items if r.Selected]
+            if not sel: window.FindName("ViewStatus").Text="Nothing selected."; return
+            non_default=[r for r in sel if r.CanDelete]
+            if not non_default: window.FindName("ViewStatus").Text="All selected are defaults."; return
+            if not _confirm("Delete Views","Delete {} view(s)? Default views will be skipped.".format(len(non_default))): return
+            deleted=blocked=0
+            for row in non_default:
+                try:
+                    with Transaction(doc,"Delete View") as t: t.Start(); doc.Delete(ElementId(row.ElemId)); t.Commit(); deleted+=1
+                except: blocked+=1
+            view_items.Clear()
+            for r in _collect_views(): view_items.Add(r)
+            window.FindName("ViewGrid").Items.Refresh()
+            n_ve2=sum(1 for r in view_items if r.CanDelete)
+            window.FindName("NavBadge_Views").Text="  {} extra".format(n_ve2) if n_ve2 else "  Default"
+            msg="Deleted {}.".format(deleted)
+            if blocked: msg+=" {} blocked.".format(blocked)
+            window.FindName("ViewStatus").Text=msg
+            _make_undo_btn("BtnUndoViews","ViewStatus")
+        def _geo_preview(s=None,e=None):
+            sel=[r for r in g_items if r.Selected]
+            if not sel: window.FindName("LblGA").Text="---"; return
+            rf=sum(r.Faces for r in sel); rs=sum(r.Solids for r in sel); re=sum(r.Edges for r in sel)
+            window.FindName("LblGA").Text="{:.2f}".format(
+                _blended(max(0,n_f-rf),max(0,n_s-rs),max(0,n_e-re))*1.25)
+        gg.CellEditEnding+=lambda s,e: _geo_preview()
+        def geo_all(s,e):
+            for r in g_items: r.Selected=True
+            gg.Items.Refresh(); _geo_preview()
+        def geo_clear(s,e):
+            for r in g_items: r.Selected=False
+            gg.Items.Refresh(); window.FindName("LblGA").Text="---"
+        def geo_delete(s,e):
+            sel=[r for r in g_items if r.Selected]
+            if not sel: window.FindName("GeoStatus").Text="Nothing selected."; return
+            if not _confirm("Delete Geometry","Delete {} selected form(s)? This is permanent.".format(len(sel))): return
+            deleted=blocked=0
+            for row in sel:
+                try:
+                    with Transaction(doc,"Delete Geo") as t:
+                        t.Start()
+                        from Autodesk.Revit.DB import ElementId as EId
+                        doc.Delete(EId(row.ElemId)); t.Commit(); deleted+=1
+                except: blocked+=1
+            nf2,ns2,ne2=_total_geom()
+            window.FindName("LblF").Text=str(nf2); window.FindName("LblS").Text=str(ns2)
+            window.FindName("LblE").Text=str(ne2)
+            gs2=_blended(nf2,ns2,ne2)*1.25
+            window.FindName("LblGS").Text="{:.2f}".format(gs2); window.FindName("LblGA").Text="---"
+            for r in a_items:
+                if r.Attr=="Blended Geo Score":
+                    r.Current=str(nf2); r.ScoreNow="{:.1f}".format(gs2); r.ScoreAfter="{:.1f}".format(gs2)
+            window.FindName("AttrGrid").Items.Refresh()
+            ng=_scan_forms(nf2,ns2,ne2); g_items.Clear()
+            for r in ng: g_items.Add(r)
+            gg.Items.Refresh()
+            window.FindName("NavBadge_Geometry").Text="  {} faces".format(nf2)
+            msg="Deleted {} form(s).".format(deleted)
+            if blocked: msg+=" {} blocked (constrained).".format(blocked)
+            window.FindName("GeoStatus").Text=msg
+            _make_undo_btn("BtnUndoGeo","GeoStatus"); _refresh_btn_states()
+        window.FindName("BtnPurge").Click      += do_purge
+        window.FindName("BtnDelCAD").Click     += do_del_cad
+        window.FindName("BtnDelImages").Click  += do_del_images
+        window.FindName("BtnUngroup").Click    += do_ungroup
+        window.FindName("BtnDelType").Click    += do_del_type
+        window.FindName("BtnDelInst").Click    += do_del_inst
+        window.FindName("BtnDelShared").Click  += do_del_shared
+        window.FindName("BtnApplyReq").Click   += do_apply_req
+        window.FindName("BtnRenameRP").Click   += do_rename_rp
+        window.FindName("BtnDelSelRP").Click   += do_del_sel_rp
+    
+        def on_rp_row_click(s, e):
+            row = window.FindName("RPGrid").SelectedItem
+            if row is None: return
+            try:
+                uid = __revit__.ActiveUIDocument
+                if uid is None or not uid.Document.Equals(doc): return
+                from System.Collections.Generic import List as CsList
+                ids = CsList[ElementId]()
+                ids.Add(ElementId(row.ElemId))
+                uid.Selection.SetElementIds(ids)
+            except: pass
+        window.FindName("RPGrid").SelectionChanged += on_rp_row_click
+        window.FindName("BtnPurgeNest").Click  += do_purge_nest
+        window.FindName("BtnDelSubcat").Click  += do_del_subcat
+        window.FindName("BtnDelTypes").Click   += do_del_types
+        window.FindName("BtnDelViews").Click   += do_del_views
+        window.FindName("BtnGA").Click         += geo_all
+        window.FindName("BtnGC").Click         += geo_clear
+        window.FindName("BtnGD").Click         += geo_delete
+        window.FindName("BtnClose").Click      += lambda s,e: window.Close()
+        def _refresh_btn_states():
+            _,_,_,ut2,ui2,ush2=_collect_params()
+            cad_now=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
+            try:
+                from Autodesk.Revit.DB import RasterImage
+                img_now=len(list(FilteredElementCollector(doc).OfClass(RasterImage).ToElements()))
+            except: img_now=0
+            grp_now=len(list(FilteredElementCollector(doc).OfClass(Group).ToElements()))
+            n_unp=sum(1 for r in nest_items if r.InstanceCount==0)
+            n_su=sum(1 for r in subcat_items if not r._has_geo)
+            window.FindName("BtnDelCAD").IsEnabled     = cad_now > 0
+            window.FindName("BtnDelImages").IsEnabled  = img_now > 0
+            window.FindName("BtnUngroup").IsEnabled    = grp_now > 0
+            window.FindName("BtnDelType").IsEnabled    = len(ut2) > 0
+            window.FindName("BtnDelInst").IsEnabled    = len(ui2) > 0
+            window.FindName("BtnDelShared").IsEnabled  = len(ush2) > 0
+            window.FindName("BtnDelSelRP").IsEnabled   = len(list(rp_items)) > 0
+            window.FindName("BtnRenameRP").IsEnabled   = len(list(rp_items)) > 0
+            window.FindName("BtnOpenNested").IsEnabled = (window.FindName("NestGrid").SelectedItem is not None)
+            window.FindName("BtnPurgeNest").IsEnabled  = n_unp > 0
+            window.FindName("BtnDelSubcat").IsEnabled  = n_su > 0
+            window.FindName("BtnDelTypes").IsEnabled   = len(list(type_items)) > 1
+            window.FindName("BtnDelViews").IsEnabled   = len(list(view_items)) > 0
+            window.FindName("BtnGD").IsEnabled         = len(list(g_items)) > 0
+        _refresh_btn_states()
+
+    # ── wire nested-family open ─────────────────────────────────────────────
+    def on_nest_select(s, e):
+        row = window.FindName("NestGrid").SelectedItem
+        window.FindName("BtnOpenNested").IsEnabled = (row is not None)
+    window.FindName("NestGrid").SelectionChanged += on_nest_select
+
+    def do_open_nested(s, e):
+        row = window.FindName("NestGrid").SelectedItem
+        if row is None: return
+        fam_path = ""
+        try:
+            fam = doc.GetElement(ElementId(row.FamId))
+            try: fam_path = fam.PathName or ""
+            except: pass
+            if not fam_path or not os.path.exists(fam_path):
+                fam_file = row.FamilyName + ".rfa"
+                parent_dir = ""
+                try: parent_dir = os.path.dirname(doc.PathName)
+                except: pass
+                if parent_dir:
+                    for _r, _d, _fs in os.walk(parent_dir):
+                        for _f in _fs:
+                            if _f.lower() == fam_file.lower():
+                                fam_path = os.path.join(_r, _f); break
+                        if fam_path: break
+        except: pass
+        if fam_path and os.path.exists(fam_path):
+            try:
+                _uid = __revit__.OpenAndActivateDocument(fam_path)
+                nested = _uid.Document if _uid else None
+                if nested and nested.IsFamilyDocument:
+                    _next[0] = nested
+                    window.Close(); return
+            except Exception as _ex:
+                window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80]); return
+        else:
+            window.FindName("NestStatus").Text = "File not found for '{}'.".format(row.FamilyName)
+    window.FindName("BtnOpenNested").Click += do_open_nested
+
     _refresh_btn_states()
     window.ShowDialog()
+    if _next[0]:
+        _run_optimizer(_next[0])
+
+if doc.IsFamilyDocument:
+    _run_optimizer(doc)
