@@ -1527,27 +1527,21 @@ def _run_optimizer(target_doc):
                     u"Save it there now so it's found automatically next time?\n\n"
                     u"(You can still open it without saving — click No to continue.)".format(
                         row.FamilyName)):
-                    from pyrevit import forms as _pf2
-                    _prop = _generate_bbb_name(row.FamilyName, cat)
-                    _nm   = _pf2.ask_for_string(
-                        prompt=u"BBB name to save as (no .rfa):\n\nOriginal: {}".format(row.FamilyName),
-                        title=u"Save to 0_HOLDING",
-                        default=_prop)
-                    if _nm:
-                        _nm  = _nm.strip()
-                        _fld = _save_folder(cat)
-                        _sdr = os.path.join(HOLDING_ROOT, _fld)
-                        if not os.path.exists(_sdr):
-                            try: os.makedirs(_sdr)
-                            except: pass
-                        _sp  = os.path.join(_sdr, _nm + ".rfa")
-                        try:
-                            from Autodesk.Revit.DB import SaveAsOptions as _SAO
-                            _o = _SAO(); _o.OverwriteExistingFile = True
-                            _nested_mem.SaveAs(_sp, _o)
-                            window.FindName("NestStatus").Text = u"Saved to 0_HOLDING: {}".format(_nm + ".rfa")
-                        except Exception as _se:
-                            window.FindName("NestStatus").Text = "Save failed: {}".format(str(_se)[:60])
+                    # Auto-generate BBB name and save — no second dialog
+                    _nm  = _generate_bbb_name(row.FamilyName, cat)
+                    _fld = _save_folder(cat)
+                    _sdr = os.path.join(HOLDING_ROOT, _fld)
+                    if not os.path.exists(_sdr):
+                        try: os.makedirs(_sdr)
+                        except: pass
+                    _sp = os.path.join(_sdr, _nm + ".rfa")
+                    try:
+                        from Autodesk.Revit.DB import SaveAsOptions as _SAO
+                        _o = _SAO(); _o.OverwriteExistingFile = True
+                        _nested_mem.SaveAs(_sp, _o)
+                        window.FindName("NestStatus").Text = u"Saved to 0_HOLDING: {}".format(_nm + ".rfa")
+                    except Exception as _se:
+                        window.FindName("NestStatus").Text = "Save failed: {}".format(str(_se)[:60])
 
                 # Open optimizer on the extracted family (with or without saving)
                 global doc
