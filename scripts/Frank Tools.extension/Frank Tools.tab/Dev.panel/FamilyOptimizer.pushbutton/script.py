@@ -1512,41 +1512,52 @@ def _run_optimizer(target_doc):
             except Exception as _ex:
                 window.FindName("NestStatus").Text = "Cannot open: {}".format(str(_ex)[:80])
         else:
-            # File not on disk — but if the family has instances placed, we can open
-            # it via Revit's EditFamily mechanism (family is already in memory).
-            if row.InstanceCount > 0:
-                try:
-                    fam = doc.GetElement(ElementId(row.FamId))
-                    # Find any instance of this family
-                    inst_found = None
-                    for sym_id in fam.GetFamilySymbolIds():
-                        for _inst in FilteredElementCollector(doc).OfClass(FamilyInstance).ToElements():
-                            try:
-                                if _inst.GetTypeId() == sym_id:
-                                    inst_found = _inst; break
+            # File not on disk — extract from Revit's memory via doc.EditFamily
+            _nested_mem = None
+            try:
+                _fam_el = doc.GetElement(ElementId(row.FamId))
+                _nested_mem = doc.EditFamily(_fam_el)
+            except: pass
+
+            if _nested_mem and _nested_mem.IsFamilyDocument:
+                # Ask if they want to save to 0_HOLDING so it's found next time
+                if _confirm(
+                    u"Save to 0_HOLDING?",
+                    u"'{}' is not in 0_HOLDING.\n\n"
+                    u"Save it there now so it's found automatically next time?\n\n"
+                    u"(You can still open it without saving — click No to continue.)".format(
+                        row.FamilyName)):
+                    from pyrevit import forms as _pf2
+                    _prop = _generate_bbb_name(row.FamilyName, cat)
+                    _nm   = _pf2.ask_for_string(
+                        prompt=u"BBB name to save as (no .rfa):\n\nOriginal: {}".format(row.FamilyName),
+                        title=u"Save to 0_HOLDING",
+                        default=_prop)
+                    if _nm:
+                        _nm  = _nm.strip()
+                        _fld = _save_folder(cat)
+                        _sdr = os.path.join(HOLDING_ROOT, _fld)
+                        if not os.path.exists(_sdr):
+                            try: os.makedirs(_sdr)
                             except: pass
-                        if inst_found: break
-                    if inst_found:
-                        # Select the instance and post EditFamily command
-                        uid2 = __revit__.ActiveUIDocument
-                        from System.Collections.Generic import List as CsList2
-                        _sel = CsList2[ElementId]()
-                        _sel.Add(inst_found.Id)
-                        uid2.Selection.SetElementIds(_sel)
-                        from Autodesk.Revit.UI import PostableCommand, RevitCommandId
-                        __revit__.PostCommand(
-                            RevitCommandId.LookupPostableCommandId(PostableCommand.EditFamily))
-                        window.FindName("NestStatus").Text = (
-                            "Opened via Revit EditFamily. Close this window and "
-                            "run the Optimizer again on the now-active family.")
-                        return
-                except Exception as _ef:
-                    pass
+                        _sp  = os.path.join(_sdr, _nm + ".rfa")
+                        try:
+                            from Autodesk.Revit.DB import SaveAsOptions as _SAO
+                            _o = _SAO(); _o.OverwriteExistingFile = True
+                            _nested_mem.SaveAs(_sp, _o)
+                            window.FindName("NestStatus").Text = u"Saved to 0_HOLDING: {}".format(_nm + ".rfa")
+                        except Exception as _se:
+                            window.FindName("NestStatus").Text = "Save failed: {}".format(str(_se)[:60])
+
+                # Open optimizer on the extracted family (with or without saving)
+                global doc
+                _saved_doc = doc
+                _run_optimizer(_nested_mem)
+                doc = _saved_doc
+                return
+
             window.FindName("NestStatus").Text = (
-                "Source file not found for '{}'. "
-                "Family has {} instance{} but EditFamily failed.".format(
-                    row.FamilyName, row.InstanceCount,
-                    "s" if row.InstanceCount != 1 else ""))
+                u"'{}' not found on disk and could not be extracted from memory.".format(row.FamilyName))
     window.FindName("BtnOpenNested").Click += do_open_nested
 
     def do_save_nested(s, e):
