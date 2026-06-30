@@ -1538,8 +1538,15 @@ def _run_optimizer(target_doc):
                     try:
                         from Autodesk.Revit.DB import SaveAsOptions as _SAO
                         _o = _SAO(); _o.OverwriteExistingFile = True
+                        # Save to 0_HOLDING (search index)
                         _nested_mem.SaveAs(_sp, _o)
-                        window.FindName("NestStatus").Text = u"Saved to 0_HOLDING: {}".format(_nm + ".rfa")
+                        # Also save to 1_AUDITED (audit copy)
+                        _aud_dir = os.path.join(AUDITED_ROOT, _fld)
+                        if not os.path.exists(_aud_dir):
+                            try: os.makedirs(_aud_dir)
+                            except: pass
+                        _nested_mem.SaveAs(os.path.join(_aud_dir, _nm + ".rfa"), _o)
+                        window.FindName("NestStatus").Text = u"Saved to 0_HOLDING + 1_AUDITED: {}".format(_nm + ".rfa")
                     except Exception as _se:
                         window.FindName("NestStatus").Text = "Save failed: {}".format(str(_se)[:60])
 
