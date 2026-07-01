@@ -207,6 +207,38 @@ def _save_folder(category):
     """Return the folder name to use in 1_AUDITED / 0_HOLDING for a given Revit category."""
     return _FOLDER_MAP.get((category or "").lower().strip(), category or "Misc")
 
+# ── NAME MAP ──────────────────────────────────────────────────────────────────
+# Persists the mapping: original Revit name → relative path inside 0_HOLDING
+# e.g.  "duct terminal arrow" : "Annotations/B_ANNO_DuctTerminal_Arrow.rfa"
+_NAME_MAP_FILE = os.path.join(HOLDING_ROOT, "_family_name_map.json")
+
+def _load_name_map():
+    try:
+        import json as _json
+        with open(_NAME_MAP_FILE, "r") as _f:
+            return _json.load(_f)
+    except: return {}
+
+def _update_name_map(original_name, abs_path):
+    """Add or update a mapping: original_name → relative path from HOLDING_ROOT."""
+    try:
+        import json as _json
+        _m = _load_name_map()
+        _m[original_name.lower().strip()] = os.path.relpath(abs_path, HOLDING_ROOT).replace("\\", "/")
+        with open(_NAME_MAP_FILE, "w") as _f:
+            _json.dump(_m, _f, indent=2)
+    except: pass
+
+def _lookup_name_map(original_name):
+    """Return absolute path if the original name has a known BBB mapping, else ''."""
+    try:
+        rel = _load_name_map().get(original_name.lower().strip(), "")
+        if rel:
+            p = os.path.join(HOLDING_ROOT, rel.replace("/", os.sep))
+            if os.path.exists(p): return p
+    except: pass
+    return ""
+
 # ── BBB NAMING CONVENTION ─────────────────────────────────────────────────────
 # Source: Naming Convention page — B_<CAT>_<Subtype>_<Descriptor>[_<Dim>]...
 _CAT_CODES = {
@@ -833,6 +865,7 @@ XAML = """
               <StackPanel Orientation="Horizontal">
                 <Button x:Name="BtnOpenNested"   Content="Open in Optimizer"    Style="{StaticResource ActBtn}"    IsEnabled="False" Margin="0,0,8,0"/>
                 <Button x:Name="BtnSaveNested"   Content="Save to 0_HOLDING"    Style="{StaticResource ActBtn}"    IsEnabled="False" Margin="0,0,8,0"/>
+                <Button x:Name="BtnRelinkNested" Content="Relink File..."        IsEnabled="False"                  Margin="0,0,8,0"/>
                 <Button x:Name="BtnPurgeNest" Content="Purge Unplaced (0 instances)" Style="{StaticResource DangerBtn}" Margin="0,0,12,0"/>
                 <TextBlock x:Name="NestStatus" Foreground="#16803A" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
                 <Button x:Name="BtnUndoNest" Content="&#8617; Undo" Visibility="Collapsed" Background="#F3EEFF" Foreground="#7C3AED" BorderBrush="#C4A6FF" Padding="8,4"/>
@@ -1434,8 +1467,9 @@ def _run_optimizer(target_doc):
 
     def on_nest_select(s, e):
         row = window.FindName("NestGrid").SelectedItem
-        window.FindName("BtnOpenNested").IsEnabled = (row is not None)
-        window.FindName("BtnSaveNested").IsEnabled = (row is not None)
+        window.FindName("BtnOpenNested").IsEnabled   = (row is not None)
+        window.FindName("BtnSaveNested").IsEnabled   = (row is not None)
+        window.FindName("BtnRelinkNested").IsEnabled = (row is not None)
         if row is None or row.InstanceCount == 0: return
         try:
             uid = __revit__.ActiveUIDocument
@@ -1468,6 +1502,10 @@ def _run_optimizer(target_doc):
                 if p and os.path.exists(p): fam_path = p
             except: pass
         except: pass
+
+        # 1b. Check name map — catches renamed BBB files (e.g. "Duct Terminal Arrow" → B_ANNO_...)
+        if not fam_path:
+            fam_path = _lookup_name_map(row.FamilyName)
 
         # 2. Direct path guesses — hardcoded 0_HOLDING first, then current family location
         #    No os.walk — only os.listdir (one level) + os.path.exists checks
@@ -1547,6 +1585,7 @@ def _run_optimizer(target_doc):
                         _o = _SAO(); _o.OverwriteExistingFile = True
                         # Save to 0_HOLDING (search index)
                         _nested_mem.SaveAs(_sp, _o)
+                        _update_name_map(row.FamilyName, _sp)   # register original→BBB mapping
                         # Also save to 1_AUDITED (audit copy)
                         _aud_dir = os.path.join(AUDITED_ROOT, _fld)
                         if not os.path.exists(_aud_dir):
@@ -1663,11 +1702,37 @@ def _run_optimizer(target_doc):
             opts = SaveAsOptions()
             opts.OverwriteExistingFile = True
             nested_doc.SaveAs(save_path, opts)
-            window.FindName("NestStatus").Text = u"Saved to 1_AUDITED: {}".format(os.path.basename(save_path))
+            # Also save a copy to 0_HOLDING so it's found by search
+            _hold_dir2 = os.path.join(HOLDING_ROOT, folder)
+            if not os.path.exists(_hold_dir2):
+                try: os.makedirs(_hold_dir2)
+                except: pass
+            _hold_path2 = os.path.join(_hold_dir2, new_name + ".rfa")
+            try: nested_doc.SaveAs(_hold_path2, opts)
+            except: pass
+            _update_name_map(row.FamilyName, _hold_path2)
+            window.FindName("NestStatus").Text = u"Saved to 1_AUDITED + 0_HOLDING: {}".format(os.path.basename(save_path))
         except Exception as _ex:
             window.FindName("NestStatus").Text = "Save failed: {}".format(str(_ex)[:80])
 
     window.FindName("BtnSaveNested").Click += do_save_nested
+
+    def do_relink_nested(s, e):
+        """Manually link an original family name to its renamed BBB file in 0_HOLDING."""
+        row = window.FindName("NestGrid").SelectedItem
+        if row is None: return
+        from Microsoft.Win32 import OpenFileDialog as _OFD5
+        _dlg5 = _OFD5()
+        _dlg5.Title  = u"Link '{}' to its renamed file in 0_HOLDING".format(row.FamilyName)
+        _dlg5.Filter = "Revit Family (*.rfa)|*.rfa"
+        try: _dlg5.InitialDirectory = HOLDING_ROOT
+        except: pass
+        if not _dlg5.ShowDialog(): return
+        _linked = _dlg5.FileName
+        _update_name_map(row.FamilyName, _linked)
+        window.FindName("NestStatus").Text = u"Relinked: '{}' → {}".format(
+            row.FamilyName, os.path.basename(_linked))
+    window.FindName("BtnRelinkNested").Click += do_relink_nested
 
     window.FindName("BtnDelSubcat").Click  += do_del_subcat
     window.FindName("BtnDelTypes").Click   += do_del_types
