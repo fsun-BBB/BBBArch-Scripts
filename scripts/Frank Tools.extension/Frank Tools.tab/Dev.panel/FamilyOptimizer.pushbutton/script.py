@@ -1527,8 +1527,15 @@ def _run_optimizer(target_doc):
                     u"Save it there now so it's found automatically next time?\n\n"
                     u"(You can still open it without saving — click No to continue.)".format(
                         row.FamilyName)):
-                    # Auto-generate BBB name and save — no second dialog
-                    _nm  = _generate_bbb_name(row.FamilyName, cat)
+                    # Show rename window — pre-filled with generated BBB name
+                    from pyrevit import forms as _pf2
+                    _prop = _generate_bbb_name(row.FamilyName, cat)
+                    _nm   = _pf2.ask_for_string(
+                        prompt=u"Rename to BBB convention (no .rfa):\n\nOriginal: {}".format(row.FamilyName),
+                        title=u"Rename before saving",
+                        default=_prop)
+                    if not _nm: return          # user cancelled rename
+                    _nm  = _nm.strip()
                     _fld = _save_folder(cat)
                     _sdr = os.path.join(HOLDING_ROOT, _fld)
                     if not os.path.exists(_sdr):
