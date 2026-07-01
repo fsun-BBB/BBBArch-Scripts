@@ -865,7 +865,7 @@ XAML = """
               <StackPanel Orientation="Horizontal">
                 <Button x:Name="BtnOpenNested"   Content="Open in Optimizer"    Style="{StaticResource ActBtn}"    IsEnabled="False" Margin="0,0,8,0"/>
                 <Button x:Name="BtnSaveNested"   Content="Save to 0_HOLDING"    Style="{StaticResource ActBtn}"    IsEnabled="False" Margin="0,0,8,0"/>
-                <Button x:Name="BtnRelinkNested" Content="Relink File..."        IsEnabled="False"                  Margin="0,0,8,0"/>
+                <Button x:Name="BtnRemapNested"  Content="Remap"                Margin="0,0,8,0"/>
                 <Button x:Name="BtnPurgeNest" Content="Purge Unplaced (0 instances)" Style="{StaticResource DangerBtn}" Margin="0,0,12,0"/>
                 <TextBlock x:Name="NestStatus" Foreground="#16803A" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
                 <Button x:Name="BtnUndoNest" Content="&#8617; Undo" Visibility="Collapsed" Background="#F3EEFF" Foreground="#7C3AED" BorderBrush="#C4A6FF" Padding="8,4"/>
@@ -1467,9 +1467,8 @@ def _run_optimizer(target_doc):
 
     def on_nest_select(s, e):
         row = window.FindName("NestGrid").SelectedItem
-        window.FindName("BtnOpenNested").IsEnabled   = (row is not None)
-        window.FindName("BtnSaveNested").IsEnabled   = (row is not None)
-        window.FindName("BtnRelinkNested").IsEnabled = (row is not None)
+        window.FindName("BtnOpenNested").IsEnabled = (row is not None)
+        window.FindName("BtnSaveNested").IsEnabled = (row is not None)
         if row is None or row.InstanceCount == 0: return
         try:
             uid = __revit__.ActiveUIDocument
@@ -1717,22 +1716,35 @@ def _run_optimizer(target_doc):
 
     window.FindName("BtnSaveNested").Click += do_save_nested
 
-    def do_relink_nested(s, e):
-        """Manually link an original family name to its renamed BBB file in 0_HOLDING."""
-        row = window.FindName("NestGrid").SelectedItem
-        if row is None: return
-        from Microsoft.Win32 import OpenFileDialog as _OFD5
-        _dlg5 = _OFD5()
-        _dlg5.Title  = u"Link '{}' to its renamed file in 0_HOLDING".format(row.FamilyName)
-        _dlg5.Filter = "Revit Family (*.rfa)|*.rfa"
-        try: _dlg5.InitialDirectory = HOLDING_ROOT
-        except: pass
-        if not _dlg5.ShowDialog(): return
-        _linked = _dlg5.FileName
-        _update_name_map(row.FamilyName, _linked)
-        window.FindName("NestStatus").Text = u"Relinked: '{}' → {}".format(
-            row.FamilyName, os.path.basename(_linked))
-    window.FindName("BtnRelinkNested").Click += do_relink_nested
+    def do_remap_nested(s, e):
+        """Scan 0_HOLDING for each nested family's expected BBB filename.
+        Update the name map and refresh Family Name in the grid for any found."""
+        mapped = 0
+        for _row in nest_items:
+            _orig = _row.FamilyName
+            _bbb  = _generate_bbb_name(_orig, _row.Category or "")
+            _fld  = _save_folder(_row.Category or "")
+            _found = ""
+            # Check primary location: 0_HOLDING/folder/BBBName.rfa
+            _p1 = os.path.join(HOLDING_ROOT, _fld, _bbb + ".rfa")
+            if os.path.exists(_p1):
+                _found = _p1
+            else:
+                # Scan all direct subfolders of 0_HOLDING
+                try:
+                    for _sub in os.listdir(HOLDING_ROOT):
+                        _p2 = os.path.join(HOLDING_ROOT, _sub, _bbb + ".rfa")
+                        if os.path.exists(_p2):
+                            _found = _p2; break
+                except: pass
+            if _found:
+                _update_name_map(_orig, _found)
+                _row.FamilyName = _bbb   # update displayed name to BBB name
+                mapped += 1
+        window.FindName("NestGrid").Items.Refresh()
+        window.FindName("NestStatus").Text = u"Remap complete — {} of {} families matched in 0_HOLDING.".format(
+            mapped, len(list(nest_items)))
+    window.FindName("BtnRemapNested").Click += do_remap_nested
 
     window.FindName("BtnDelSubcat").Click  += do_del_subcat
     window.FindName("BtnDelTypes").Click   += do_del_types
