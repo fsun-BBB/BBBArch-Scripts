@@ -5,17 +5,15 @@ Date    = 22.06.2026
 ________________________________________________________________
 Description:
 Calculates the clear height (CLR) from every ceiling to the
-floor directly below it and places ceiling tags in the active
-view.  Results are written to the shared parameter
-"S_Ceiling Tag_Clear Height".
+floor directly below it.  Results are written to the shared
+parameter "S_Ceiling Tag_Clear Height".
 
 Requires the tag family "B_ANNO_Ceiling Tag_Clear Height" to be
 loaded, and Configure to have been run first.
 ________________________________________________________________
 How-To:
 1. Run Configure to set clearance thresholds and search depth.
-2. Open a Floor Plan or Reflected Ceiling Plan.
-3. Click this button — calculation and tagging run automatically.
+2. Click this button — calculation runs automatically.
 ________________________________________________________________
 Author: BBB DCT Team"""
 
@@ -31,15 +29,10 @@ from Autodesk.Revit.DB import (
     FamilySymbol,
     FilteredElementCollector,
     GroupTypeId,
-    IndependentTag,
     Options,
-    Reference,
     Solid,
     SpecTypeId,
-    TagOrientation,
     Transaction,
-    ViewType,
-    XYZ,
 )
 from Autodesk.Revit.UI import (
     TaskDialog,
@@ -233,39 +226,92 @@ def bind_shared_param(doc, app):
 # pre-run validation — CLR family check
 # ---------------------------------------------------------------------------
 
-_clr_types = [
-    t for t in
-    FilteredElementCollector(doc)
-    .OfClass(FamilySymbol)
-    .OfCategory(BuiltInCategory.OST_CeilingTags)
-    .ToElements()
-    if t.Family.Name == CLR_FAMILY
-]
+CLR_FAMILY_PATH = (
+    r"N:\Design Technology Resources\01_BIM CONTENT\Toolbar Content"
+    r"\Annotations\B_ANNO_Ceiling Tag_Clear Height.rfa"
+)
+
+
+def _find_clr_types():
+    return [
+        t for t in
+        FilteredElementCollector(doc)
+        .OfClass(FamilySymbol)
+        .OfCategory(BuiltInCategory.OST_CeilingTags)
+        .ToElements()
+        if t.Family.Name == CLR_FAMILY
+    ]
+
+
+_clr_types = _find_clr_types()
 
 if not _clr_types:
     _dlg = TaskDialog("Update Ceiling Tags")
     _dlg.MainInstruction = "Missing Required Ceiling Tag Family"
     _dlg.MainContent = (
         "The required ceiling tag family \"{}\" is not loaded in this project.\n\n"
-        "Please load this family before running.".format(CLR_FAMILY)
+        "Click \"Load Family\" to load it automatically, or load it manually "
+        "before running.".format(CLR_FAMILY)
     )
     _dlg.AddCommandLink(
         TaskDialogCommandLinkId.CommandLink1,
+        "Load Family",
+        "Load \"{}\" from the BBB content library".format(CLR_FAMILY),
+    )
+    _dlg.AddCommandLink(
+        TaskDialogCommandLinkId.CommandLink2,
         "View Documentation",
         "Open detailed instructions in SharePoint",
     )
     _dlg.CommonButtons = TaskDialogCommonButtons.Close
     _dlg.DefaultButton = TaskDialogResult.Close
     _result = _dlg.Show()
-    if _result == TaskDialogResult.CommandLink1:
+
+    if _result == TaskDialogResult.CommandLink2:
         os.startfile(
             "https://beyerblinderbelle.sharepoint.com/sites/revitstandards/SitePages/"
             "Clear-Ceiling-Tags.aspx?csf=1&web=1&e=lPmO0h&CID=1c2d935e-70a1-4e9a-ad30-aef04834b0bd"
         )
-    script.exit()
+        script.exit()
+    elif _result != TaskDialogResult.CommandLink1:
+        script.exit()
 
-tag_type_id = _clr_types[0].Id
-view        = uidoc.ActiveView
+    # user chose "Load Family" — pull it in from the N: drive automatically
+    if not os.path.exists(CLR_FAMILY_PATH):
+        forms.alert(
+            "Could not find the family file on the N: drive:\n\n{}\n\n"
+            "Check your network connection or load it manually.".format(CLR_FAMILY_PATH),
+            title="Load Family Failed",
+            warn_icon=True,
+        )
+        script.exit()
+
+    t_load = Transaction(doc, "Load CLR Ceiling Tag Family")
+    t_load.Start()
+    try:
+        _loaded = doc.LoadFamily(CLR_FAMILY_PATH)
+    except Exception as e:
+        t_load.RollBack()
+        forms.alert(
+            "Failed to load family:\n\n{}".format(e),
+            title="Load Family Failed",
+            warn_icon=True,
+        )
+        script.exit()
+    else:
+        if _loaded:
+            t_load.Commit()
+        else:
+            t_load.RollBack()
+
+    _clr_types = _find_clr_types()
+    if not _clr_types:
+        forms.alert(
+            "The family could not be loaded. Please load it manually before running.",
+            title="Load Family Failed",
+            warn_icon=True,
+        )
+        script.exit()
 
 # ---------------------------------------------------------------------------
 # output window
@@ -297,23 +343,24 @@ def _is_cancelled():
 
 CSS = (
     "body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:16px;background:#fff;color:#222;}"
-    ".hdr{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #ebebeb;}"
-    ".hdr h1{margin:0 0 2px;font-size:15px;font-weight:600;color:#111;}"
-    ".hdr p{margin:0;font-size:11px;color:#999;}"
-    ".prog-wrap{margin-bottom:12px;}"
+    ".hdr{margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #D0D7DE;}"
+    ".hdr h1{margin:0 0 3px;font-size:15px;font-weight:700;color:#111;}"
+    ".hdr p{margin:0;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.6px;font-weight:600;}"
+    ".prog-wrap{margin-bottom:14px;}"
     ".prog-label{position:relative;height:20px;margin-bottom:5px;}"
-    ".prog-text{position:absolute;left:0;top:50%;font-size:11px;color:#999;margin-top:-6px;}"
+    ".prog-text{position:absolute;left:0;top:50%;font-size:11px;color:#888;margin-top:-6px;}"
     ".cancel-btn{position:absolute;right:0;top:50%;margin-top:-8px;padding:2px 8px;"
-    "background:#999;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:10px;}"
+    "background:#888;color:#fff;border:none;border-radius:3px;cursor:pointer;font-size:10px;}"
     ".cancel-btn:disabled{background:#ccc;cursor:default;}"
-    ".prog-bg{background:#ebebeb;height:3px;border-radius:2px;}"
-    ".prog-fill{background:#111;height:3px;width:0%;border-radius:2px;}"
-    ".res-section{margin-bottom:6px;border:1px solid #ebebeb;border-radius:4px;overflow:hidden;}"
+    ".prog-bg{background:#E8EBEF;height:3px;border-radius:2px;}"
+    ".prog-fill{background:#2C3E50;height:3px;width:0%;border-radius:2px;}"
+    ".res-section{margin-bottom:8px;border:1px solid #D0D7DE;border-radius:8px;overflow:hidden;}"
     ".res-hdr{display:-ms-flexbox;display:flex;-ms-flex-pack:justify;justify-content:space-between;"
-    "-ms-flex-align:center;align-items:center;padding:7px 12px;background:#f8f8f8;"
-    "border-bottom:1px solid #ebebeb;cursor:pointer;font-size:12px;font-weight:600;color:#333;}"
-    ".res-lbl{font-size:11px;color:#999;font-weight:400;}"
-    ".res-body{background:#fff;padding:8px;}"
+    "-ms-flex-align:center;align-items:center;padding:8px 14px;background:#F6F8FA;"
+    "border-bottom:2px solid #D0D7DE;cursor:pointer;"
+    "font-size:10px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.5px;}"
+    ".res-lbl{font-size:10px;color:#888;font-weight:400;text-transform:none;letter-spacing:0;}"
+    ".res-body{background:#fff;padding:10px;}"
 )
 
 output.inject_to_head('style', CSS)
@@ -341,8 +388,8 @@ output.inject_script(JS)
 # ---------------------------------------------------------------------------
 
 output.print_html(
-    '<div class="hdr"><h1>&#128207; Update Ceiling Tags</h1>'
-    '<p>Calculating clear ceiling heights and placing tags</p></div>'
+    '<div class="hdr"><h1>Update Ceiling Tags</h1>'
+    '<p>Real Ceiling Height &mdash; Calculating clear heights</p></div>'
     '<div class="prog-wrap" id="prog-wrap" style="display:block;">'
     '  <div class="prog-label">'
     '    <span class="prog-text"><span id="proc-text">Starting</span><span id="proc-dots">.</span></span>'
@@ -392,35 +439,36 @@ def _finish_progress():
 # ---------------------------------------------------------------------------
 
 def _tbl_row(cells, alt=False):
-    bg = ' style="background:rgba(0,0,0,.03);"' if alt else ''
+    bg = ' style="background:#F6F8FA;"' if alt else ''
     return '<tr{}>'.format(bg) + ''.join(
-        '<td style="padding:5px 8px;border-bottom:1px solid #eee;font-size:11px;">{}</td>'.format(c)
+        '<td style="padding:6px 10px;border-bottom:1px solid #E8EBEF;font-size:11px;color:#333;">{}</td>'.format(c)
         for c in cells
     ) + '</tr>'
 
 def _kv_row(label, value, alt=False):
-    bg = 'background:rgba(0,0,0,.03);' if alt else ''
+    bg = 'background:#F6F8FA;' if alt else ''
     return (
         u'<tr style="{bg}">'
-        u'<td style="padding:5px 8px;border-bottom:1px solid #eee;'
-        u'font-size:11px;">{lbl}</td>'
-        u'<td style="padding:5px 12px 5px 8px;border-bottom:1px solid #eee;'
-        u'font-size:11px;">{val}</td>'
+        u'<td style="padding:6px 10px;border-bottom:1px solid #E8EBEF;'
+        u'font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.5px;font-weight:600;">{lbl}</td>'
+        u'<td style="padding:6px 12px 6px 10px;border-bottom:1px solid #E8EBEF;'
+        u'font-size:12px;font-weight:600;color:#111;font-family:Consolas,monospace;">{val}</td>'
         u'</tr>'
     ).format(bg=bg, lbl=label, val=value)
 
 def _tbl(headers, rows):
     if headers:
         th = ''.join(
-            '<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:600;'
-            'text-transform:uppercase;letter-spacing:.4px;background:#f0f0f0;color:#555;">{h}</th>'
+            '<th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:600;'
+            'text-transform:uppercase;letter-spacing:.5px;background:#F6F8FA;'
+            'color:#555;border-bottom:2px solid #D0D7DE;">{h}</th>'
             .format(h=h) for h in headers
         )
         thead = '<tr>{}</tr>'.format(th)
     else:
         thead = ''
     return (
-        '<table style="width:100%;border-collapse:collapse;margin-top:6px;">'
+        '<table style="width:100%;border-collapse:collapse;margin-top:4px;">'
         '{}{}</table>'
         .format(thead, ''.join(rows))
     )
@@ -443,14 +491,14 @@ def _inject_results(group, title, html, collapsed=False):
 # CALCULATE — ceiling CLR
 # ---------------------------------------------------------------------------
 
-results     = []   # (ceiling_id, dist_str, changed)  — all successfully written
-errors      = []
-tags_placed = 0    # filled after TAG section; declared here so Results can reference it
-no_floor  = []
-warn1     = []
-warn2     = []
-warn3     = []
-skipped   = []   # (ceiling_id, reason) — collected but could not be processed
+results          = []   # (ceiling_id, dist_str, changed)  — all successfully written
+_changed_results = []   # subset of results where value changed
+errors           = []
+no_floor         = []
+warn1            = []
+warn2            = []
+warn3            = []
+skipped          = []   # (ceiling_id, reason) — collected but could not be processed
 
 _upd("Collecting elements", 0)
 
@@ -479,7 +527,18 @@ for fl in (
     floor_data.append((fl, top))
 
 if not ceilings:
-    _upd("No ceilings found in model", 100, '')
+    _upd("No ceilings found", 100, '')
+    output.print_html(
+        u'<div style="margin:24px auto;max-width:480px;text-align:center;'
+        u'padding:32px 24px;background:#f8f9fa;border-radius:8px;'
+        u'border:1px solid #e0e0e0;">'
+        u'<div style="font-size:32px;margin-bottom:12px;">&#127968;</div>'
+        u'<p style="font-size:15px;font-weight:600;color:#333;margin:0 0 8px;">No ceilings found</p>'
+        u'<p style="font-size:12px;color:#666;margin:0;">'
+        u'This model has no ceiling elements. Open a model that contains ceilings and run the tool again.'
+        u'</p></div>'
+    )
+    script.exit()
 else:
     _n         = len(ceilings)
     _w         = "ceiling" if _n == 1 else "ceilings"
@@ -582,61 +641,7 @@ else:
     _changed_results = [(cid, dist) for cid, dist, chg in results if chg]
 
 # ---------------------------------------------------------------------------
-# TAG — place ceiling tags in active view
-# ---------------------------------------------------------------------------
-
-_upd("Placing tags", 0)
-
-if view.ViewType in (ViewType.FloorPlan, ViewType.CeilingPlan, ViewType.AreaPlan):
-    existing_tagged = set()
-    for _tag in (
-        FilteredElementCollector(doc, view.Id)
-        .OfCategory(BuiltInCategory.OST_CeilingTags)
-        .WhereElementIsNotElementType()
-        .ToElements()
-    ):
-        try:
-            existing_tagged.add(_tag.TaggedLocalElementId.IntegerValue)
-        except Exception:
-            pass
-
-    t_tags = Transaction(doc, "Place Ceiling Tags")
-    t_tags.Start()
-    _nt = len(results)
-
-    for _ti, (cid, _, __) in enumerate(results):
-        if _ti % 5 == 0:
-            if _is_cancelled():
-                t_tags.RollBack()
-                _js(
-                    "var d=document.getElementById('proc-dots');if(d)d.innerHTML='';"
-                    "var btn=document.getElementById('cancel-btn');if(btn)btn.style.display='none';"
-                )
-                output.print_html(
-                    '<p style="color:#e74c3c;font-size:12px;font-weight:600;">'
-                    '&#10060; Tag placement cancelled.</p>'
-                )
-                script.exit()
-            _pct = int((_ti + 1) * 100.0 / _nt) if _nt else 100
-            _upd("Placing tags  {} / {}".format(_ti + 1, _nt), _pct)
-        if cid.IntegerValue in existing_tagged:
-            continue
-        clg  = doc.GetElement(cid)
-        bbox = clg.get_BoundingBox(view) or clg.get_BoundingBox(None)
-        pt   = XYZ(
-            (bbox.Min.X + bbox.Max.X) / 2.0,
-            (bbox.Min.Y + bbox.Max.Y) / 2.0, 0.0
-        ) if bbox else XYZ(0.0, 0.0, 0.0)
-        try:
-            IndependentTag.Create(doc, tag_type_id, view.Id, Reference(clg),
-                                  False, TagOrientation.Horizontal, pt)
-            tags_placed += 1
-        except Exception:
-            pass
-    t_tags.Commit()
-
-# ---------------------------------------------------------------------------
-# OUTPUT SECTIONS — shown after both Calculate and Tag complete
+# OUTPUT SECTIONS — shown after Calculate completes
 # ---------------------------------------------------------------------------
 
 # ── Section 1: Results (expanded) ─────────────────────────────────────────
@@ -648,7 +653,6 @@ _stat_rows = [
             '{} ({} value changed)'.format(_n_updated, _n_changed), True),
     _kv_row('No level reference (Broken)',   str(len(skipped))),
     _kv_row('Ambiguous floor (Unresolved)',  str(len(errors)), True),
-    _kv_row('Tags placed',                  str(tags_placed)),
 ]
 _inject_results('results', 'Results', _tbl([], _stat_rows),
                 collapsed=False)
