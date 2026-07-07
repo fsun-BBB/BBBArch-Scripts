@@ -1927,9 +1927,15 @@ def _run_optimizer(target_doc, parent_doc=None):
         except Exception as _ex:
             window.FindName("SubTitle").Text = u"Save failed: {}".format(str(_ex)[:80])
             return False
+    _reopen_after_save=[False]
     def do_save_doc(s, e):
+        # Saving while the modal pumps freezes the window even when it owns
+        # Revit — so close, save outside the modal loop, and reopen.
         _nest_settle_group()   # pending nested delete becomes permanent before save
-        _do_save_current()
+        _pending_save[0]=True
+        _reopen_after_save[0]=True
+        _dirty[0]=False
+        window.Close()
     window.FindName("BtnSaveDoc").Click += do_save_doc
     _pending_save=[False]   # save AFTER the modal closes — saving while the
                             # dialog pumps can freeze the window
@@ -2037,6 +2043,10 @@ def _run_optimizer(target_doc, parent_doc=None):
                     _o4=_SAO4(); _o4.OverwriteExistingFile=True
                     doc.SaveAs(_sd3.FileName,_o4)
         except Exception: pass
+    if _reopen_after_save[0]:
+        # "Save" (not close) — reopen the optimizer on the saved family.
+        _run_optimizer(target_doc, parent_doc)
+        return
     if _next[0]:
         _run_optimizer(_next[0])
 
