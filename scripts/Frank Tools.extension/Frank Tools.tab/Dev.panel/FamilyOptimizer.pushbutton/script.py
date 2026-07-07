@@ -1343,6 +1343,7 @@ def _run_optimizer(target_doc, parent_doc=None):
         window.FindName("NavBadge_RefPlanes").Text="  {} unnamed".format(n_rpu2) if n_rpu2 else "  Named"
         if n: _dirty[0]=True
         window.FindName("RPStatus").Text="Renamed {}.".format(n)
+        _refresh_btn_states()
     def do_del_sel_rp(s,e):
         sel=[r for r in rp_items if r.Selected]
         if not sel: window.FindName("RPStatus").Text="Nothing selected."; return
@@ -1540,6 +1541,7 @@ def _run_optimizer(target_doc, parent_doc=None):
                     doc.Delete(EId(row.ElemId)); t.Commit(); deleted+=1
             except: blocked+=1
         nf2,ns2,ne2=_total_geom()
+        _geo_cache[0]=(nf2,ns2,ne2)
         window.FindName("LblF").Text=str(nf2); window.FindName("LblS").Text=str(ns2)
         window.FindName("LblE").Text=str(ne2)
         gs2=_blended(nf2,ns2,ne2)*1.25
@@ -1952,6 +1954,31 @@ def _run_optimizer(target_doc, parent_doc=None):
     window.FindName("BtnSaveRemap").Click += do_save_remap
     if parent_doc is not None:
         window.FindName("BtnSaveRemap").Visibility = WVis.Visible
+    _geo_cache=[(n_f,n_s,n_e)]   # geometry counts, updated by geo_delete
+    def _refresh_score():
+        # Recompute the header score badges from the CURRENT model state so
+        # every fix action immediately moves the score.
+        gf,gs2,ge=_geo_cache[0]
+        try: nb2=os.path.getsize(doc.PathName) if doc.PathName else nbytes
+        except: nb2=nbytes
+        sz2=nb2/1000000.0
+        cad2=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
+        try:
+            from Autodesk.Revit.DB import RasterImage
+            img2=len(list(FilteredElementCollector(doc).OfClass(RasterImage).ToElements()))
+        except: img2=0
+        nest2=sum(1 for f in FilteredElementCollector(doc).OfClass(Family).ToElements()
+                  if f.Name and _is_user_family(f))
+        grp2=len(list(FilteredElementCollector(doc).OfClass(Group).ToElements()))
+        rp2=sum(1 for rp in FilteredElementCollector(doc).OfClass(ReferencePlane).ToElements()
+                if (rp.Name or "").strip().lower() in ("reference plane",""))
+        tp2,sh2,fp2,ut2,ui2,_ush2=_collect_params()
+        cur2=_final(sz2,cad2,img2,nest2,grp2,rp2,len(ut2),len(ui2),tp2,sh2,fp2,gf,gs2,ge)
+        pot2=_final(sz2,0,0,nest2,0,0,0,0,max(0,tp2-len(ut2)-len(ui2)),sh2,fp2,gf,gs2,ge)
+        window.FindName("ScoreCurrent").Text="{:.1f}".format(cur2)
+        window.FindName("ScorePotential").Text="{:.1f}".format(pot2)
+        g2=pot2-cur2
+        window.FindName("ScoreGain").Text="+{:.1f}".format(g2) if g2>0 else "0"
     def _refresh_btn_states():
         _,_,_,ut2,ui2,ush2=_collect_params()
         cad_now=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
@@ -1975,6 +2002,7 @@ def _run_optimizer(target_doc, parent_doc=None):
         window.FindName("BtnDelTypes").IsEnabled   = len(list(type_items)) > 1
         window.FindName("BtnDelViews").IsEnabled   = len(list(view_items)) > 0
         window.FindName("BtnGD").IsEnabled         = len(list(g_items)) > 0
+        _refresh_score()
     _refresh_btn_states()
     window.ShowDialog()
     if _next[0]:
