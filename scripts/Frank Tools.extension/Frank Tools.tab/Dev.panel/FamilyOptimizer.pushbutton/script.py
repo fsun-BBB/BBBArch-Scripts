@@ -466,6 +466,7 @@ class NestedRow(object):
         self.Category = cat
         self.InstanceCount = count
         self.FamId = fid
+        self.Selected = False
 
 class SubcatRow(object):
     def __init__(self, name, has_geo, eid):
@@ -503,6 +504,20 @@ def _confirm(title, msg):
     from System.Windows import MessageBox, MessageBoxButton, MessageBoxResult
     r = MessageBox.Show(msg, title, MessageBoxButton.YesNo)
     return r == MessageBoxResult.Yes
+
+# ── FAMILY LOAD OPTIONS ───────────────────────────────────────────────────────
+from Autodesk.Revit.DB import IFamilyLoadOptions
+
+class _OverwriteLoadOpts(IFamilyLoadOptions):
+    """Always overwrite the existing nested family when reloading."""
+    def OnFamilyFound(self, familyInUse, overwriteParameterValues):
+        try: overwriteParameterValues.Value = True
+        except: pass
+        return True
+    def OnSharedFamilyFound(self, sharedFamily, familyInUse, source, overwriteParameterValues):
+        try: overwriteParameterValues.Value = True
+        except: pass
+        return True
 
 
 # â”€â”€ XAML â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -660,6 +675,8 @@ XAML = """
             </StackPanel>
           </Border>
           <Button x:Name="BtnOpenOther" Content="Open Other..." VerticalAlignment="Center" Margin="0,0,8,0"/>
+          <Button x:Name="BtnSaveDoc" Content="&#128190; Save" VerticalAlignment="Center" Margin="0,0,8,0"/>
+          <Button x:Name="BtnSaveRemap" Content="&#128190; Save &amp; Remap" Style="{StaticResource ActBtn}" VerticalAlignment="Center" Margin="0,0,8,0" Visibility="Collapsed"/>
           <Button x:Name="BtnClose" Content="Close" VerticalAlignment="Center"/>
         </StackPanel>
       </Grid>
@@ -853,11 +870,12 @@ XAML = """
               </StackPanel>
             </Border>
             <StackPanel Margin="28,16,28,16">
-              <DataGrid x:Name="NestGrid" Height="220" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False" IsReadOnly="True">
+              <DataGrid x:Name="NestGrid" Height="220" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserResizeRows="False" IsReadOnly="False">
                 <DataGrid.Columns>
-                  <DataGridTextColumn Header="Family Name" Binding="{Binding FamilyName}"    Width="*"/>
-                  <DataGridTextColumn Header="Category"    Binding="{Binding Category}"      Width="160"/>
-                  <DataGridTextColumn Header="Instances"   Binding="{Binding InstanceCount}" Width="85"><DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="FontFamily" Value="Consolas"/></Style></DataGridTextColumn.ElementStyle></DataGridTextColumn>
+                  <DataGridTemplateColumn Header="" Width="32" CanUserResize="False"><DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center"/></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                  <DataGridTextColumn Header="Family Name" Binding="{Binding FamilyName}"    Width="*"   IsReadOnly="True"/>
+                  <DataGridTextColumn Header="Category"    Binding="{Binding Category}"      Width="160" IsReadOnly="True"/>
+                  <DataGridTextColumn Header="Instances"   Binding="{Binding InstanceCount}" Width="85"  IsReadOnly="True"><DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="FontFamily" Value="Consolas"/></Style></DataGridTextColumn.ElementStyle></DataGridTextColumn>
                 </DataGrid.Columns>
               </DataGrid>
             </StackPanel>
@@ -866,7 +884,8 @@ XAML = """
                 <Button x:Name="BtnOpenNested"   Content="Open in Optimizer"    Style="{StaticResource ActBtn}"    IsEnabled="False" Margin="0,0,8,0"/>
                 <Button x:Name="BtnSaveNested"   Content="Save to 0_HOLDING"    Style="{StaticResource ActBtn}"    IsEnabled="False" Margin="0,0,8,0"/>
                 <Button x:Name="BtnRemapNested"  Content="Remap"                Margin="0,0,8,0"/>
-                <Button x:Name="BtnPurgeNest" Content="Purge Unplaced (0 instances)" Style="{StaticResource DangerBtn}" Margin="0,0,12,0"/>
+                <Button x:Name="BtnNestAllUnused" Content="Choose All Unused"   Margin="0,0,8,0"/>
+                <Button x:Name="BtnNestDelete"   Content="Delete"               Style="{StaticResource DangerBtn}" Margin="0,0,12,0"/>
                 <TextBlock x:Name="NestStatus" Foreground="#16803A" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
                 <Button x:Name="BtnUndoNest" Content="&#8617; Undo" Visibility="Collapsed" Background="#F3EEFF" Foreground="#7C3AED" BorderBrush="#C4A6FF" Padding="8,4"/>
               </StackPanel>
@@ -1027,7 +1046,9 @@ if not doc.IsFamilyDocument:
 
 
 # ── OPTIMIZER RUNNER ─────────────────────────────────────────────────────────
-def _run_optimizer(target_doc):
+def _run_optimizer(target_doc, parent_doc=None):
+    # parent_doc: the family document this one was opened from (if nested) —
+    # enables "Save & Remap" to reload the edited family back into its host.
     global doc
     doc = target_doc
     _next = [None]  # stores nested family doc to open after window closes
@@ -1318,25 +1339,36 @@ def _run_optimizer(target_doc):
         if blocked: msg+=" {} blocked (in use).".format(blocked)
         window.FindName("RPStatus").Text=msg
         _make_undo_btn("BtnUndoRP","RPStatus"); _refresh_btn_states()
-    def do_purge_nest(s,e):
-        to_purge=[r for r in nest_items if r.InstanceCount==0]
-        if not to_purge: window.FindName("NestStatus").Text="No unplaced nested families."; return
-        names="\n".join(r.FamilyName for r in to_purge[:8])
-        if len(to_purge)>8: names+="\n..."
-        if not _confirm("Purge Unplaced","Remove {} unplaced nested families?\n\n{}".format(len(to_purge),names)): return
+    def do_nest_all_unused(s,e):
+        n=0
+        for r in nest_items:
+            r.Selected = (r.InstanceCount==0)
+            if r.Selected: n+=1
+        window.FindName("NestGrid").Items.Refresh()
+        window.FindName("NestStatus").Text="{} unused families selected.".format(n) if n else "No unused (0-instance) families."
+    def do_nest_delete(s,e):
+        sel=[r for r in nest_items if r.Selected]
+        if not sel: window.FindName("NestStatus").Text="Nothing selected — tick the families to delete."; return
+        placed=[r for r in sel if r.InstanceCount>0]
+        names="\n".join(r.FamilyName for r in sel[:8])
+        if len(sel)>8: names+="\n..."
+        msg="Delete {} nested families?\n\n{}".format(len(sel),names)
+        if placed:
+            msg+="\n\nWARNING: {} of them have placed instances — deleting removes those instances too.".format(len(placed))
+        if not _confirm("Delete Nested Families",msg): return
         deleted=blocked=0
-        for row in to_purge:
+        for row in sel:
             try:
-                with Transaction(doc,"Purge Nested Family") as t: t.Start(); doc.Delete(ElementId(row.FamId)); t.Commit(); deleted+=1
+                with Transaction(doc,"Delete Nested Family") as t: t.Start(); doc.Delete(ElementId(row.FamId)); t.Commit(); deleted+=1
             except: blocked+=1
         nest_items.Clear()
         for r in _collect_nested(): nest_items.Add(r)
         window.FindName("NestGrid").Items.Refresh()
         n_unp2=sum(1 for r in nest_items if r.InstanceCount==0)
         window.FindName("NavBadge_Nested").Text="  {} unplaced".format(n_unp2) if n_unp2 else "  All placed"
-        msg="Removed {}.".format(deleted)
-        if blocked: msg+=" {} blocked.".format(blocked)
-        window.FindName("NestStatus").Text=msg
+        msg2="Deleted {}.".format(deleted)
+        if blocked: msg2+=" {} blocked.".format(blocked)
+        window.FindName("NestStatus").Text=msg2
         _make_undo_btn("BtnUndoNest","NestStatus"); _refresh_btn_states()
     def do_del_subcat(s,e):
         to_del=[r for r in subcat_items if not r._has_geo]
@@ -1463,7 +1495,8 @@ def _run_optimizer(target_doc):
             uid.Selection.SetElementIds(ids)
         except: pass
     window.FindName("RPGrid").SelectionChanged += on_rp_row_click
-    window.FindName("BtnPurgeNest").Click  += do_purge_nest
+    window.FindName("BtnNestAllUnused").Click += do_nest_all_unused
+    window.FindName("BtnNestDelete").Click    += do_nest_delete
 
     def on_nest_select(s, e):
         row = window.FindName("NestGrid").SelectedItem
@@ -1543,7 +1576,7 @@ def _run_optimizer(target_doc):
                 if nested and nested.IsFamilyDocument:
                     global doc
                     _saved_doc = doc
-                    _run_optimizer(nested)
+                    _run_optimizer(nested, _saved_doc)
                     doc = _saved_doc
                     return
             except Exception as _ex:
@@ -1598,7 +1631,7 @@ def _run_optimizer(target_doc):
                 # Open optimizer on the extracted family (with or without saving)
                 global doc
                 _saved_doc = doc
-                _run_optimizer(_nested_mem)
+                _run_optimizer(_nested_mem, _saved_doc)
                 doc = _saved_doc
                 return
 
@@ -1768,6 +1801,43 @@ def _run_optimizer(target_doc):
             except Exception as _ex:
                 pass
     window.FindName("BtnOpenOther").Click   += do_open_other
+    def do_save_doc(s, e):
+        # Save the CURRENT family document only.
+        try:
+            if doc.PathName:
+                doc.Save()
+                window.FindName("SubTitle").Text = u"Saved: {}".format(doc.PathName)
+            else:
+                from Microsoft.Win32 import SaveFileDialog as _SFD
+                _sd = _SFD()
+                _sd.Title = "Save Family As"
+                _sd.Filter = "Revit Family (*.rfa)|*.rfa"
+                _sd.FileName = doc.Title
+                if _sd.ShowDialog():
+                    from Autodesk.Revit.DB import SaveAsOptions as _SAO2
+                    _o2 = _SAO2(); _o2.OverwriteExistingFile = True
+                    doc.SaveAs(_sd.FileName, _o2)
+                    window.FindName("SubTitle").Text = u"Saved: {}".format(_sd.FileName)
+        except Exception as _ex:
+            window.FindName("SubTitle").Text = u"Save failed: {}".format(str(_ex)[:80])
+    window.FindName("BtnSaveDoc").Click += do_save_doc
+    def do_save_remap(s, e):
+        # Save this family, then reload it into the parent family it was
+        # opened from — updating the nested copy inside the host.
+        try:
+            if doc.PathName: doc.Save()
+        except Exception: pass
+        if parent_doc is None:
+            window.FindName("SubTitle").Text = u"No parent family — nothing to remap into."
+            return
+        try:
+            doc.LoadFamily(parent_doc, _OverwriteLoadOpts())
+            window.FindName("SubTitle").Text = u"Saved and reloaded into: {}".format(parent_doc.Title)
+        except Exception as _ex:
+            window.FindName("SubTitle").Text = u"Remap failed: {}".format(str(_ex)[:80])
+    window.FindName("BtnSaveRemap").Click += do_save_remap
+    if parent_doc is not None:
+        window.FindName("BtnSaveRemap").Visibility = WVis.Visible
     window.FindName("BtnClose").Click       += lambda s,e: window.Close()
     def _refresh_btn_states():
         _,_,_,ut2,ui2,ush2=_collect_params()
@@ -1787,7 +1857,7 @@ def _run_optimizer(target_doc):
         window.FindName("BtnDelShared").IsEnabled  = len(ush2) > 0
         window.FindName("BtnDelSelRP").IsEnabled   = len(list(rp_items)) > 0
         window.FindName("BtnRenameRP").IsEnabled   = len(list(rp_items)) > 0
-        window.FindName("BtnPurgeNest").IsEnabled  = n_unp > 0
+        window.FindName("BtnNestDelete").IsEnabled = len(list(nest_items)) > 0
         window.FindName("BtnDelSubcat").IsEnabled  = n_su > 0
         window.FindName("BtnDelTypes").IsEnabled   = len(list(type_items)) > 1
         window.FindName("BtnDelViews").IsEnabled   = len(list(view_items)) > 0
