@@ -1111,8 +1111,9 @@ def _run_optimizer(target_doc, parent_doc=None):
     view_rows=_collect_views()
     type_rows=_collect_types()
     window=XamlReader.Parse(XAML)
-    window.FindName("SubTitle").Text=u"{} . {} types . {} nested . {} geo forms".format(
-        doc.Title, len(type_rows), len(nest_rows), len(geo_rows))
+    _sz_txt = u" ({:.1f} MB)".format(sz) if nbytes > 0 else u""
+    window.FindName("SubTitle").Text=u"{}{} . {} types . {} nested . {} geo forms".format(
+        doc.Title, _sz_txt, len(type_rows), len(nest_rows), len(geo_rows))
     window.FindName("ScoreCurrent").Text="{:.1f}".format(cur)
     window.FindName("ScorePotential").Text="{:.1f}".format(pot)
     gv=pot-cur
