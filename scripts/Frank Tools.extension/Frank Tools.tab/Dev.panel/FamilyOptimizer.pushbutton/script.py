@@ -1184,7 +1184,9 @@ def _run_optimizer(target_doc, parent_doc=None):
             undo_id=RevitCommandId.LookupPostableCommandId(PostableCommand.Undo)
             __revit__.PostCommand(undo_id); return True
         except: return False
+    _dirty=[False]   # True only when the user changed the family via this window
     def _make_undo_btn(btn_name,status_name):
+        _dirty[0]=True
         btn=window.FindName(btn_name)
         if btn: btn.Visibility=WVis.Visible
         def _do(s,e):
@@ -1304,6 +1306,7 @@ def _run_optimizer(target_doc, parent_doc=None):
         window.FindName("ReqGrid").Items.Refresh()
         n_req2=sum(1 for r in req_items if r.HasIssue)
         window.FindName("NavBadge_ReqParams").Text="  {} empty".format(n_req2) if n_req2 else "  Filled"
+        if applied: _dirty[0]=True
         msg="Applied to {} type/param combinations.".format(applied)
         if skipped: msg+=" {} skipped.".format(skipped)
         window.FindName("ReqStatus").Text=msg
@@ -1322,6 +1325,7 @@ def _run_optimizer(target_doc, parent_doc=None):
         n_rpu2=sum(1 for r in rp_items if r.Status=="Unnamed")
         _update_row("Unnamed Ref Planes",n_rpu2,0,1,0.5)
         window.FindName("NavBadge_RefPlanes").Text="  {} unnamed".format(n_rpu2) if n_rpu2 else "  Named"
+        if n: _dirty[0]=True
         window.FindName("RPStatus").Text="Renamed {}.".format(n)
     def do_del_sel_rp(s,e):
         sel=[r for r in rp_items if r.Selected]
@@ -1393,6 +1397,7 @@ def _run_optimizer(target_doc, parent_doc=None):
             except Exception as ex:
                 blocked_info.append((row.FamilyName, str(ex).split("\n")[0][:120]))
         if deleted:
+            _dirty[0]=True
             _nest_tg[0]=tg
             _nest_deleted[0]=deleted_names
             window.FindName("BtnUndoNest").Visibility=WVis.Visible
@@ -1870,6 +1875,7 @@ def _run_optimizer(target_doc, parent_doc=None):
             if doc.PathName:
                 doc.Save()
                 window.FindName("SubTitle").Text = u"Saved: {}".format(doc.PathName)
+                _dirty[0]=False
                 return True
             else:
                 from Microsoft.Win32 import SaveFileDialog as _SFD
@@ -1882,6 +1888,7 @@ def _run_optimizer(target_doc, parent_doc=None):
                     _o2 = _SAO2(); _o2.OverwriteExistingFile = True
                     doc.SaveAs(_sd.FileName, _o2)
                     window.FindName("SubTitle").Text = u"Saved: {}".format(_sd.FileName)
+                    _dirty[0]=False
                     return True
                 return False
         except Exception as _ex:
@@ -1898,10 +1905,10 @@ def _run_optimizer(target_doc, parent_doc=None):
     window.FindName("BtnSaveClose").Click += do_save_close
     def on_window_closing(s, e):
         # X button: finalize pending deletes, then offer to save unsaved edits.
+        # Prompt ONLY if the user changed something through this window —
+        # doc.IsModified is unreliable (True after mere open/upgrade).
         _nest_settle_group()
-        try: modified = doc.IsModified
-        except: modified = False
-        if not modified: return
+        if not _dirty[0]: return
         from System.Windows import MessageBox, MessageBoxButton, MessageBoxResult
         r = MessageBox.Show(
             u"Save changes to '{}' before closing?".format(doc.Title),
