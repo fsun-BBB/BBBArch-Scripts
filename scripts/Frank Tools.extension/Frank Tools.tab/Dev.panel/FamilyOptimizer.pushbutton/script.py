@@ -20,7 +20,8 @@ clr.AddReference("WindowsBase")
 from Autodesk.Revit.DB import (
     FilteredElementCollector, ImportInstance, ReferencePlane,
     Family, FamilyInstance, Group, Dimension, InternalDefinition, BuiltInParameter,
-    ViewDetailLevel, Solid, GeometryInstance, Options, Transaction, ElementId, View,
+    ViewDetailLevel, Solid, GeometryInstance, Options, Transaction, TransactionGroup,
+    ElementId, View,
 )
 from System.Windows.Markup import XamlReader
 from System.Collections.ObjectModel import ObservableCollection
@@ -677,7 +678,7 @@ XAML = """
           <Button x:Name="BtnOpenOther" Content="Open Other..." VerticalAlignment="Center" Margin="0,0,8,0"/>
           <Button x:Name="BtnSaveDoc" Content="&#128190; Save" VerticalAlignment="Center" Margin="0,0,8,0"/>
           <Button x:Name="BtnSaveRemap" Content="&#128190; Save &amp; Remap" Style="{StaticResource ActBtn}" VerticalAlignment="Center" Margin="0,0,8,0" Visibility="Collapsed"/>
-          <Button x:Name="BtnClose" Content="Close" VerticalAlignment="Center"/>
+          <Button x:Name="BtnSaveClose" Content="Save and Close" VerticalAlignment="Center"/>
         </StackPanel>
       </Grid>
     </Border>
@@ -1340,12 +1341,34 @@ def _run_optimizer(target_doc, parent_doc=None):
         window.FindName("RPStatus").Text=msg
         _make_undo_btn("BtnUndoRP","RPStatus"); _refresh_btn_states()
     def do_nest_all_unused(s,e):
+        # Rebuild the collection so WPF regenerates every row — Items.Refresh()
+        # alone does not reliably re-render checkboxes on virtualized rows.
+        rows=list(nest_items)
+        nest_items.Clear()
         n=0
-        for r in nest_items:
+        for r in rows:
             r.Selected = (r.InstanceCount==0)
             if r.Selected: n+=1
+            nest_items.Add(r)
         window.FindName("NestGrid").Items.Refresh()
         window.FindName("NestStatus").Text="{} unused families selected.".format(n) if n else "No unused (0-instance) families."
+    _nest_tg=[None]      # open TransactionGroup for the last nested delete
+    _nest_deleted=[[]]   # names deleted in the last delete (for undo message)
+    def _nest_refresh_grid():
+        nest_items.Clear()
+        for r in _collect_nested(): nest_items.Add(r)
+        window.FindName("NestGrid").Items.Refresh()
+        n_unp2=sum(1 for r in nest_items if r.InstanceCount==0)
+        window.FindName("NavBadge_Nested").Text="  {} unplaced".format(n_unp2) if n_unp2 else "  All placed"
+    def _nest_settle_group():
+        # Finalize any pending delete group — after this it can no longer be undone here.
+        tg=_nest_tg[0]
+        if tg is None: return
+        try: tg.Assimilate()
+        except:
+            try: tg.RollBack()
+            except: pass
+        _nest_tg[0]=None
     def do_nest_delete(s,e):
         sel=[r for r in nest_items if r.Selected]
         if not sel: window.FindName("NestStatus").Text="Nothing selected — tick the families to delete."; return
@@ -1356,20 +1379,47 @@ def _run_optimizer(target_doc, parent_doc=None):
         if placed:
             msg+="\n\nWARNING: {} of them have placed instances — deleting removes those instances too.".format(len(placed))
         if not _confirm("Delete Nested Families",msg): return
+        _nest_settle_group()   # previous delete becomes permanent
+        tg=TransactionGroup(doc,"Delete Nested Families")
+        tg.Start()
         deleted=blocked=0
+        deleted_names=[]
         for row in sel:
             try:
-                with Transaction(doc,"Delete Nested Family") as t: t.Start(); doc.Delete(ElementId(row.FamId)); t.Commit(); deleted+=1
+                with Transaction(doc,"Delete Nested Family") as t: t.Start(); doc.Delete(ElementId(row.FamId)); t.Commit()
+                deleted+=1; deleted_names.append(row.FamilyName)
             except: blocked+=1
-        nest_items.Clear()
-        for r in _collect_nested(): nest_items.Add(r)
-        window.FindName("NestGrid").Items.Refresh()
-        n_unp2=sum(1 for r in nest_items if r.InstanceCount==0)
-        window.FindName("NavBadge_Nested").Text="  {} unplaced".format(n_unp2) if n_unp2 else "  All placed"
-        msg2="Deleted {}.".format(deleted)
-        if blocked: msg2+=" {} blocked.".format(blocked)
-        window.FindName("NestStatus").Text=msg2
-        _make_undo_btn("BtnUndoNest","NestStatus"); _refresh_btn_states()
+        if deleted:
+            _nest_tg[0]=tg
+            _nest_deleted[0]=deleted_names
+            window.FindName("BtnUndoNest").Visibility=WVis.Visible
+        else:
+            try: tg.RollBack()
+            except: pass
+        _nest_refresh_grid()
+        msg2="Deleted {}: {}".format(deleted, ", ".join(deleted_names[:6]))
+        if len(deleted_names)>6: msg2+=", ..."
+        if blocked: msg2+="  ({} blocked)".format(blocked)
+        window.FindName("NestStatus").Text=msg2 if deleted else "Nothing deleted." + (" {} blocked.".format(blocked) if blocked else "")
+        _refresh_btn_states()
+    def do_undo_nest(s,e):
+        tg=_nest_tg[0]
+        if tg is None:
+            window.FindName("BtnUndoNest").Visibility=WVis.Collapsed; return
+        try:
+            tg.RollBack()
+            _nest_tg[0]=None
+            _nest_refresh_grid()
+            restored=_nest_deleted[0]
+            msg=u"Restored {}: {}".format(len(restored), ", ".join(restored[:6]))
+            if len(restored)>6: msg+=", ..."
+            window.FindName("NestStatus").Text=msg
+            _nest_deleted[0]=[]
+        except Exception as ex:
+            window.FindName("NestStatus").Text=u"Undo failed: {}".format(str(ex)[:60])
+        window.FindName("BtnUndoNest").Visibility=WVis.Collapsed
+        _refresh_btn_states()
+    window.FindName("BtnUndoNest").Click += do_undo_nest
     def do_del_subcat(s,e):
         to_del=[r for r in subcat_items if not r._has_geo]
         if not to_del: window.FindName("SubcatStatus").Text="No unused subcategories."; return
@@ -1801,12 +1851,13 @@ def _run_optimizer(target_doc, parent_doc=None):
             except Exception as _ex:
                 pass
     window.FindName("BtnOpenOther").Click   += do_open_other
-    def do_save_doc(s, e):
-        # Save the CURRENT family document only.
+    def _do_save_current():
+        # Save the CURRENT family document only. Returns True if saved.
         try:
             if doc.PathName:
                 doc.Save()
                 window.FindName("SubTitle").Text = u"Saved: {}".format(doc.PathName)
+                return True
             else:
                 from Microsoft.Win32 import SaveFileDialog as _SFD
                 _sd = _SFD()
@@ -1818,9 +1869,35 @@ def _run_optimizer(target_doc, parent_doc=None):
                     _o2 = _SAO2(); _o2.OverwriteExistingFile = True
                     doc.SaveAs(_sd.FileName, _o2)
                     window.FindName("SubTitle").Text = u"Saved: {}".format(_sd.FileName)
+                    return True
+                return False
         except Exception as _ex:
             window.FindName("SubTitle").Text = u"Save failed: {}".format(str(_ex)[:80])
+            return False
+    def do_save_doc(s, e):
+        _nest_settle_group()   # pending nested delete becomes permanent before save
+        _do_save_current()
     window.FindName("BtnSaveDoc").Click += do_save_doc
+    def do_save_close(s, e):
+        _nest_settle_group()
+        _do_save_current()
+        window.Close()
+    window.FindName("BtnSaveClose").Click += do_save_close
+    def on_window_closing(s, e):
+        # X button: finalize pending deletes, then offer to save unsaved edits.
+        _nest_settle_group()
+        try: modified = doc.IsModified
+        except: modified = False
+        if not modified: return
+        from System.Windows import MessageBox, MessageBoxButton, MessageBoxResult
+        r = MessageBox.Show(
+            u"Save changes to '{}' before closing?".format(doc.Title),
+            "Family Optimizer", MessageBoxButton.YesNoCancel)
+        if r == MessageBoxResult.Cancel:
+            e.Cancel = True
+        elif r == MessageBoxResult.Yes:
+            _do_save_current()
+    window.Closing += on_window_closing
     def do_save_remap(s, e):
         # Save this family, then reload it into the parent family it was
         # opened from — updating the nested copy inside the host.
@@ -1838,7 +1915,6 @@ def _run_optimizer(target_doc, parent_doc=None):
     window.FindName("BtnSaveRemap").Click += do_save_remap
     if parent_doc is not None:
         window.FindName("BtnSaveRemap").Visibility = WVis.Visible
-    window.FindName("BtnClose").Click       += lambda s,e: window.Close()
     def _refresh_btn_states():
         _,_,_,ut2,ui2,ush2=_collect_params()
         cad_now=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
