@@ -1382,13 +1382,15 @@ def _run_optimizer(target_doc, parent_doc=None):
         _nest_settle_group()   # previous delete becomes permanent
         tg=TransactionGroup(doc,"Delete Nested Families")
         tg.Start()
-        deleted=blocked=0
+        deleted=0
         deleted_names=[]
+        blocked_info=[]   # (name, revit reason)
         for row in sel:
             try:
                 with Transaction(doc,"Delete Nested Family") as t: t.Start(); doc.Delete(ElementId(row.FamId)); t.Commit()
                 deleted+=1; deleted_names.append(row.FamilyName)
-            except: blocked+=1
+            except Exception as ex:
+                blocked_info.append((row.FamilyName, str(ex).split("\n")[0][:120]))
         if deleted:
             _nest_tg[0]=tg
             _nest_deleted[0]=deleted_names
@@ -1397,10 +1399,20 @@ def _run_optimizer(target_doc, parent_doc=None):
             try: tg.RollBack()
             except: pass
         _nest_refresh_grid()
-        msg2="Deleted {}: {}".format(deleted, ", ".join(deleted_names[:6]))
-        if len(deleted_names)>6: msg2+=", ..."
-        if blocked: msg2+="  ({} blocked)".format(blocked)
-        window.FindName("NestStatus").Text=msg2 if deleted else "Nothing deleted." + (" {} blocked.".format(blocked) if blocked else "")
+        if deleted:
+            msg2="Deleted {}: {}".format(deleted, ", ".join(deleted_names[:6]))
+            if len(deleted_names)>6: msg2+=", ..."
+            if blocked_info: msg2+="  ({} blocked)".format(len(blocked_info))
+            window.FindName("NestStatus").Text=msg2
+        else:
+            window.FindName("NestStatus").Text="Nothing deleted. {} blocked.".format(len(blocked_info))
+        if blocked_info:
+            from System.Windows import MessageBox as _MB
+            _MB.Show(
+                u"Revit blocked these deletions:\n\n" +
+                u"\n\n".join(u"{}\n   {}".format(n, r or "in use by the model")
+                             for n, r in blocked_info[:6]),
+                "Delete Nested Families — Blocked")
         _refresh_btn_states()
     def do_undo_nest(s,e):
         tg=_nest_tg[0]
