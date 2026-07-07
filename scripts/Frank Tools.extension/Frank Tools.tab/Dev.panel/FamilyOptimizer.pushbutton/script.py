@@ -1960,20 +1960,19 @@ def _run_optimizer(target_doc, parent_doc=None):
         elif r == MessageBoxResult.Yes:
             _pending_save[0]=True
     window.Closing += on_window_closing
+    _pending_remap=[False]
     def do_save_remap(s, e):
-        # Save this family, then reload it into the parent family it was
-        # opened from — updating the nested copy inside the host.
-        try:
-            if doc.PathName: doc.Save()
-        except Exception: pass
+        # Save this family and reload it into the parent it was opened from.
+        # Both run AFTER the modal closes — doing either while the dialog
+        # pumps freezes the window.
         if parent_doc is None:
             window.FindName("SubTitle").Text = u"No parent family — nothing to remap into."
             return
-        try:
-            doc.LoadFamily(parent_doc, _OverwriteLoadOpts())
-            window.FindName("SubTitle").Text = u"Saved and reloaded into: {}".format(parent_doc.Title)
-        except Exception as _ex:
-            window.FindName("SubTitle").Text = u"Remap failed: {}".format(str(_ex)[:80])
+        _nest_settle_group()
+        _pending_save[0]=True
+        _pending_remap[0]=True
+        _dirty[0]=False
+        window.Close()
     window.FindName("BtnSaveRemap").Click += do_save_remap
     if parent_doc is not None:
         window.FindName("BtnSaveRemap").Visibility = WVis.Visible
@@ -2060,6 +2059,12 @@ def _run_optimizer(target_doc, parent_doc=None):
                     from Autodesk.Revit.DB import SaveAsOptions as _SAO4
                     _o4=_SAO4(); _o4.OverwriteExistingFile=True
                     doc.SaveAs(_sd3.FileName,_o4)
+        except Exception: pass
+    if _pending_remap[0] and parent_doc is not None:
+        # Reload the saved family back into its parent, then fall through to
+        # the parent's window (still open underneath).
+        try:
+            target_doc.LoadFamily(parent_doc, _OverwriteLoadOpts())
         except Exception: pass
     if _reopen_after_save[0]:
         # "Save" (not close) — reopen the optimizer on the saved family.
