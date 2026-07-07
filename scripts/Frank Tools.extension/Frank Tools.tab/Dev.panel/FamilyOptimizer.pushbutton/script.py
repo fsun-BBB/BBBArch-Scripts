@@ -2002,6 +2002,24 @@ def _run_optimizer(target_doc, parent_doc=None):
         window.FindName("ScorePotential").Text="{:.1f}".format(pot2)
         g2=pot2-cur2
         window.FindName("ScoreGain").Text="+{:.1f}".format(g2) if g2>0 else "0"
+        # ── per-section potential gains in the sidebar badges ────────────────
+        def _gain_txt(g): return u"  (+{:.1f})".format(g) if g>0.05 else u""
+        def _b(name,txt):
+            el=window.FindName(name)
+            if el: el.Text=txt
+        n_file2=cad2+img2+grp2
+        g_file=1.25*min(10,cad2*10)+0.5*min(10,img2*10)+0.75*min(10,grp2*5)
+        _b("NavBadge_File",(u"  {} items".format(n_file2) if n_file2 else u"  Clean")+_gain_txt(g_file))
+        n_pu2=len(ut2)+len(ui2)
+        g_par=(0.75*min(10,2*len(ut2))+0.75*min(10,2*len(ui2))
+               +(max(0,10-(tp2-n_pu2)//2)-max(0,10-tp2//2))*0.5)
+        _b("NavBadge_Params",(u"  {} unused".format(n_pu2) if n_pu2 else u"  Clean")+_gain_txt(g_par))
+        g_rp=0.5*min(10,rp2)
+        _b("NavBadge_RefPlanes",(u"  {} unnamed".format(rp2) if rp2 else u"  Named")+_gain_txt(g_rp))
+        try: unp2=sum(1 for r in nest_items if r.InstanceCount==0)
+        except: unp2=0
+        g_nest=(max(0,10-(nest2-unp2))-max(0,10-nest2))*1.25
+        _b("NavBadge_Nested",(u"  {} unplaced".format(unp2) if unp2 else u"  All placed")+_gain_txt(g_nest))
     def _refresh_btn_states():
         _,_,_,ut2,ui2,ush2=_collect_params()
         cad_now=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
