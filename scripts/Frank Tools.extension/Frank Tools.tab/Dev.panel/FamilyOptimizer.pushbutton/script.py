@@ -656,6 +656,13 @@ XAML = """
           <TextBlock x:Name="SubTitle" FontSize="11" Foreground="#555F6D" Margin="0,2,0,0"/>
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <Border Padding="14,6" Margin="0,0,6,0" Background="#F0F2F5" CornerRadius="6" BorderBrush="#D0D7DE" BorderThickness="1">
+            <StackPanel>
+              <TextBlock Text="ORIGINAL" FontSize="8" FontWeight="Bold" Foreground="#555F6D" HorizontalAlignment="Center"/>
+              <TextBlock x:Name="ScoreOriginal" FontSize="26" FontWeight="Bold" FontFamily="Consolas" Foreground="#9EA3AB" HorizontalAlignment="Center"/>
+            </StackPanel>
+          </Border>
+          <TextBlock Text="&#8594;" FontSize="16" Foreground="#D0D7DE" VerticalAlignment="Center" Margin="0,0,6,0"/>
           <Border Padding="14,6" Margin="0,0,6,0" Background="#FFF3E0" CornerRadius="6" BorderBrush="#F0C060" BorderThickness="1">
             <StackPanel>
               <TextBlock Text="CURRENT" FontSize="8" FontWeight="Bold" Foreground="#B45309" HorizontalAlignment="Center"/>
@@ -1127,9 +1134,16 @@ def _run_optimizer(target_doc, parent_doc=None):
     view_rows=_collect_views()
     type_rows=_collect_types()
     window=XamlReader.Parse(XAML)
+    # Parent the window to Revit's main window — an ownerless modal can
+    # deadlock the message loop after operations like doc.Save().
+    try:
+        from System.Windows.Interop import WindowInteropHelper
+        WindowInteropHelper(window).Owner = __revit__.MainWindowHandle
+    except Exception: pass
     _sz_txt = u" ({:.1f} MB)".format(sz) if nbytes > 0 else u""
     window.FindName("SubTitle").Text=u"{}{} . {} types . {} nested . {} geo forms".format(
         doc.Title, _sz_txt, len(type_rows), len(nest_rows), len(geo_rows))
+    window.FindName("ScoreOriginal").Text="{:.1f}".format(cur)
     window.FindName("ScoreCurrent").Text="{:.1f}".format(cur)
     window.FindName("ScorePotential").Text="{:.1f}".format(pot)
     gv=pot-cur
@@ -1917,9 +1931,12 @@ def _run_optimizer(target_doc, parent_doc=None):
         _nest_settle_group()   # pending nested delete becomes permanent before save
         _do_save_current()
     window.FindName("BtnSaveDoc").Click += do_save_doc
+    _pending_save=[False]   # save AFTER the modal closes — saving while the
+                            # dialog pumps can freeze the window
     def do_save_close(s, e):
         _nest_settle_group()
-        _do_save_current()
+        _pending_save[0]=True
+        _dirty[0]=False
         window.Close()
     window.FindName("BtnSaveClose").Click += do_save_close
     def on_window_closing(s, e):
@@ -1935,7 +1952,7 @@ def _run_optimizer(target_doc, parent_doc=None):
         if r == MessageBoxResult.Cancel:
             e.Cancel = True
         elif r == MessageBoxResult.Yes:
-            _do_save_current()
+            _pending_save[0]=True
     window.Closing += on_window_closing
     def do_save_remap(s, e):
         # Save this family, then reload it into the parent family it was
@@ -2005,6 +2022,21 @@ def _run_optimizer(target_doc, parent_doc=None):
         _refresh_score()
     _refresh_btn_states()
     window.ShowDialog()
+    if _pending_save[0]:
+        # Deferred save — runs after the modal loop exits so it cannot freeze it.
+        try:
+            if doc.PathName and not _temp_home[0]:
+                doc.Save()
+            else:
+                from Microsoft.Win32 import SaveFileDialog as _SFD3
+                _sd3=_SFD3(); _sd3.Title="Save Family As"
+                _sd3.Filter="Revit Family (*.rfa)|*.rfa"
+                _sd3.FileName=(doc.Title or "family").replace(".rfa","")
+                if _sd3.ShowDialog():
+                    from Autodesk.Revit.DB import SaveAsOptions as _SAO4
+                    _o4=_SAO4(); _o4.OverwriteExistingFile=True
+                    doc.SaveAs(_sd3.FileName,_o4)
+        except Exception: pass
     if _next[0]:
         _run_optimizer(_next[0])
 
