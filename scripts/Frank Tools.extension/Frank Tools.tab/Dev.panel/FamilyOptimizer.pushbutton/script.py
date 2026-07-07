@@ -1056,6 +1056,22 @@ def _run_optimizer(target_doc, parent_doc=None):
 
     try: nbytes=os.path.getsize(doc.PathName) if doc.PathName else 0
     except: nbytes=0
+    _temp_home=[False]   # True when doc's PathName points at our temp measuring copy
+    if nbytes==0:
+        # In-memory family (opened via EditFamily) has no file — save a temp
+        # copy to measure its real size. Save buttons still prompt for a real
+        # location because the temp path is not a real home.
+        try:
+            import tempfile
+            from Autodesk.Revit.DB import SaveAsOptions as _SAOsz
+            _tdir=os.path.join(tempfile.gettempdir(),"FamilyOptimizer")
+            if not os.path.exists(_tdir): os.makedirs(_tdir)
+            _tpath=os.path.join(_tdir,(doc.Title or "family").replace(".rfa","")+".rfa")
+            _osz=_SAOsz(); _osz.OverwriteExistingFile=True
+            doc.SaveAs(_tpath,_osz)
+            nbytes=os.path.getsize(_tpath)
+            _temp_home[0]=True
+        except: pass
     sz=nbytes/1000000.0
     n_cad=len(list(FilteredElementCollector(doc).OfClass(ImportInstance).ToElements()))
     all_rp=list(FilteredElementCollector(doc).OfClass(ReferencePlane).ToElements())
@@ -1872,7 +1888,7 @@ def _run_optimizer(target_doc, parent_doc=None):
     def _do_save_current():
         # Save the CURRENT family document only. Returns True if saved.
         try:
-            if doc.PathName:
+            if doc.PathName and not _temp_home[0]:
                 doc.Save()
                 window.FindName("SubTitle").Text = u"Saved: {}".format(doc.PathName)
                 _dirty[0]=False
@@ -1882,13 +1898,14 @@ def _run_optimizer(target_doc, parent_doc=None):
                 _sd = _SFD()
                 _sd.Title = "Save Family As"
                 _sd.Filter = "Revit Family (*.rfa)|*.rfa"
-                _sd.FileName = doc.Title
+                _sd.FileName = (doc.Title or "family").replace(".rfa","")
                 if _sd.ShowDialog():
                     from Autodesk.Revit.DB import SaveAsOptions as _SAO2
                     _o2 = _SAO2(); _o2.OverwriteExistingFile = True
                     doc.SaveAs(_sd.FileName, _o2)
                     window.FindName("SubTitle").Text = u"Saved: {}".format(_sd.FileName)
                     _dirty[0]=False
+                    _temp_home[0]=False
                     return True
                 return False
         except Exception as _ex:
