@@ -1,0 +1,202 @@
+<title>Content Conformance — Audit Progress Report</title>
+<style>
+  :root{
+    --paper:#f5f4ef; --card:#fffefb; --ink:#1b1d21; --muted:#6c7078; --faint:#9a9ea6;
+    --line:#e2e0d8; --accent:#2d6a72; --accent-soft:#dfeceb;
+    --good:#2f8f4e; --good2:#3a7d44; --warn:#b9791b; --crit:#b23b3b;
+    --good-bg:#e6f4ea; --warn-bg:#f6ecd8; --crit-bg:#f4e2e0;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{--paper:#16181b;--card:#1e2024;--ink:#e9e8e2;--muted:#a2a6ad;--faint:#71757c;
+      --line:#2f3237;--accent:#5fb0b8;--accent-soft:#1d2e30;
+      --good:#57c072;--good2:#6fc57d;--warn:#e0a94a;--crit:#e0736b;
+      --good-bg:#16281b;--warn-bg:#2c2417;--crit-bg:#2e1c1b;}
+  }
+  :root[data-theme="dark"]{--paper:#16181b;--card:#1e2024;--ink:#e9e8e2;--muted:#a2a6ad;--faint:#71757c;
+    --line:#2f3237;--accent:#5fb0b8;--accent-soft:#1d2e30;--good:#57c072;--good2:#6fc57d;--warn:#e0a94a;--crit:#e0736b;
+    --good-bg:#16281b;--warn-bg:#2c2417;--crit-bg:#2e1c1b;}
+  :root[data-theme="light"]{--paper:#f5f4ef;--card:#fffefb;--ink:#1b1d21;--muted:#6c7078;--faint:#9a9ea6;
+    --line:#e2e0d8;--accent:#2d6a72;--accent-soft:#dfeceb;--good:#2f8f4e;--good2:#3a7d44;--warn:#b9791b;--crit:#b23b3b;
+    --good-bg:#e6f4ea;--warn-bg:#f6ecd8;--crit-bg:#f4e2e0;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;font-size:13.5px;}
+  .sheet{max-width:1000px;margin:0 auto;padding:34px 40px 56px;}
+  .mono{font-family:"Cascadia Code","Consolas",ui-monospace,monospace;}
+  .num{font-variant-numeric:tabular-nums;}
+
+  header.top{border-bottom:2px solid var(--accent);padding-bottom:15px;margin-bottom:20px;
+    display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;}
+  .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0 0 6px;}
+  h1{font-size:25px;letter-spacing:-.01em;margin:0;font-weight:700;text-wrap:balance;}
+  .sub{color:var(--muted);font-size:13px;margin:6px 0 0;}
+  .meta{text-align:right;font-size:11.5px;color:var(--muted);line-height:1.7;}
+  .meta b{color:var(--ink);}
+  .lede{font-size:14.5px;margin:0 0 20px;max-width:80ch;} .lede b{color:var(--accent);}
+
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:22px;}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 13px;}
+  .kpi .v{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1;}
+  .kpi .v small{font-size:11px;font-weight:600;color:var(--muted);}
+  .kpi .l{font-size:10.5px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.05em;}
+  .kpi.accent .v{color:var(--accent);} .kpi.good .v{color:var(--good);}
+
+  section{margin-bottom:22px;}
+  h2{font-size:13px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 12px;
+    display:flex;align-items:center;gap:10px;font-weight:700;}
+  h2 .n{color:var(--accent);} h2::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  /* hero improvement band */
+  .wins{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;}
+  .win{background:var(--good-bg);border:1px solid var(--good);border-radius:10px;padding:16px 16px 14px;position:relative;overflow:hidden;}
+  .win .pct{font-size:40px;font-weight:800;letter-spacing:-.03em;color:var(--good);line-height:.95;}
+  .win .lbl{font-size:12.5px;font-weight:600;margin-top:4px;}
+  .win .from{font-size:11px;color:var(--muted);margin-top:5px;}
+  .win .spark{height:8px;border-radius:5px;background:rgba(0,0,0,.08);margin-top:10px;overflow:hidden;display:flex;}
+  .win .spark .b{background:var(--crit);opacity:.5;} .win .spark .a{background:var(--good);}
+  .badges{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .badge{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:13px 15px;display:flex;align-items:center;gap:12px;}
+  .badge .ic{font-size:22px;} .badge .big{font-size:20px;font-weight:800;color:var(--good);letter-spacing:-.02em;}
+  .badge .t{font-size:11.5px;color:var(--muted);} .badge .t b{color:var(--ink);display:block;font-size:12.5px;}
+
+  .cols{display:grid;grid-template-columns:1.25fr 1fr;gap:20px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px 16px;}
+  .card h3{margin:0 0 10px;font-size:12.5px;color:var(--ink);}
+  ul.tight{margin:0;padding-left:16px;} ul.tight li{margin:4px 0;} ul.tight li b{color:var(--ink);}
+  .chip{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:20px;background:var(--accent-soft);color:var(--accent);margin:1px 2px;}
+
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  th{text-align:left;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line);font-weight:700;}
+  td{padding:5px 8px;border-bottom:1px solid var(--line);} tr:last-child td{border-bottom:none;}
+  td.r,th.r{text-align:right;}
+  .cbar{display:flex;align-items:center;gap:8px;}
+  .cbar .track{flex:1;height:14px;background:var(--accent-soft);border-radius:4px;overflow:hidden;min-width:60px;}
+  .cbar .track>span{display:block;height:100%;background:var(--accent);border-radius:4px;}
+  .cbar .cnt{font-weight:800;width:22px;text-align:right;color:var(--accent);}
+  .scoretag{font-weight:700;} .s-good{color:var(--good);} .s-warn{color:var(--warn);} .s-crit{color:var(--crit);}
+
+  footer{margin-top:22px;padding-top:14px;border-top:1px solid var(--line);font-size:11px;color:var(--faint);
+    display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  @media (max-width:820px){.kpis{grid-template-columns:repeat(3,1fr);}.wins,.badges{grid-template-columns:1fr;}.cols{grid-template-columns:1fr;}}
+  @media print{body{background:#fff;font-size:11.5px;}.sheet{padding:0;max-width:100%;}
+    .kpi,.card,.win,.badge{break-inside:avoid;}section{break-inside:avoid;}.page-break{break-before:page;}
+    :root{--paper:#fff;--card:#fff;}}
+</style>
+
+<div class="sheet">
+  <header class="top">
+    <div>
+      <p class="eyebrow">BBB · BIM Content Conformance</p>
+      <h1>Family Library Audit — Progress Report</h1>
+      <p class="sub">Standardization, cleaning &amp; efficiency benchmark of the conformed Revit content library</p>
+    </div>
+    <div class="meta">
+      <div>Report date &nbsp;<b>21 Jul 2026</b></div>
+      <div>Benchmark &nbsp;<b>Family Efficiency v6</b></div>
+      <div>Stage &nbsp;<b class="mono">3_CLEANED</b></div>
+    </div>
+  </header>
+
+  <p class="lede">The conformed library is delivered at <b>171 cleaned families</b> across <b>16 standardized
+  categories</b> — every family now on the <b>B_&lt;CAT&gt;_</b> naming convention, fully free of imported CAD and
+  raster images, with parameter bloat cut by roughly <b>70%</b>. Below: the measured improvements and the
+  current shape of the library.</p>
+
+  <div class="kpis">
+    <div class="kpi accent"><div class="v num">171</div><div class="l">Cleaned families</div></div>
+    <div class="kpi"><div class="v num">~586<small> KB</small></div><div class="l">Typical family size</div></div>
+    <div class="kpi"><div class="v num">16</div><div class="l">Std. categories</div></div>
+    <div class="kpi good"><div class="v num">100<small>%</small></div><div class="l">Naming compliant</div></div>
+    <div class="kpi good"><div class="v num">0</div><div class="l">CAD / raster imports</div></div>
+    <div class="kpi accent"><div class="v num">77</div><div class="l">Avg efficiency score</div></div>
+  </div>
+
+  <section>
+    <h2><span class="n">01</span> Measured Improvements</h2>
+    <div class="wins">
+      <div class="win">
+        <div class="pct">−71%</div>
+        <div class="lbl">Unused parameters removed</div>
+        <div class="from mono">281 → 81 on matched families</div>
+        <div class="spark"><span class="b" style="width:71%"></span><span class="a" style="width:29%"></span></div>
+      </div>
+      <div class="win">
+        <div class="pct">−69%</div>
+        <div class="lbl">Formula parameters simplified</div>
+        <div class="from mono">456 → 142 on matched families</div>
+        <div class="spark"><span class="b" style="width:69%"></span><span class="a" style="width:31%"></span></div>
+      </div>
+      <div class="win">
+        <div class="pct">+6%</div>
+        <div class="lbl">Efficiency score gain</div>
+        <div class="from mono">71.2 → 75.6 avg (0–100 scale)</div>
+        <div class="spark"><span class="a" style="width:100%"></span></div>
+      </div>
+    </div>
+    <div class="badges">
+      <div class="badge"><span class="ic">🧹</span><div class="t"><b class="big">100% clean</b>Zero imported CAD &amp; zero raster images across all 171 families</div></div>
+      <div class="badge"><span class="ic">🏷️</span><div class="t"><b class="big">0 → 100%</b>Naming-convention compliance (B_&lt;CAT&gt;_ standard)</div></div>
+      <div class="badge"><span class="ic">📁</span><div class="t"><b class="big">3.7×</b>Audited coverage growth since first pass (51 → 191 reviewed)</div></div>
+    </div>
+    <p class="from" style="margin:8px 2px 0;color:var(--faint);">Parameter reductions measured on the matched before/after cohort (Guardian Pass → Cleaned, identical families). CAD/raster elimination and naming compliance verified across the full cleaned set.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span> Standardization &amp; Reorganization</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>What was accomplished</h3>
+        <ul class="tight">
+          <li><b>100% naming compliance</b> — every family migrated to <span class="mono">B_&lt;CAT&gt;_&lt;Subtype&gt;_&lt;Descriptor&gt;</span> with a consistent 4-letter category code.</li>
+          <li><b>Folder structure rationalized</b> into 16 standard categories; legacy folders folded into the standard set
+            <span class="chip">Accessories-Bathroom</span><span class="chip">Equipment</span><span class="chip">Kitchens &amp; Millwork</span><span class="chip">Fire Protection</span><span class="chip">Security Devices</span></li>
+          <li><b>Whole pipeline realigned</b> — Guardian Pass &amp; Cleaned rebuilt to mirror the Audited structure, <b>hash-verified with zero content change</b>.</li>
+          <li><b>Duplicate families removed</b> — redundant / mis-coded copies consolidated across all three stages.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Nested-family documentation</h3>
+        <ul class="tight">
+          <li><b>1,248 nested-family relationships</b> catalogued across the cleaned library — every dependency mapped one level at a time (A→B, B→C).</li>
+          <li><b>Kitchen (36) &amp; Bathroom (37)</b> unit families fully audited — parent/child links, type variants, sizes and status — into dedicated <b>Notion databases + Excel</b>.</li>
+          <li>Gives a queryable, always-current picture of what each assembly is built from.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="page-break">
+    <h2><span class="n">03</span> The Library by Category <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);font-size:11px;">— family count · avg size · nesting · score</span></h2>
+    <div class="card" style="padding:8px 12px;">
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th style="width:38%;">Category &amp; family count</th><th class="r">Avg size</th><th class="r">Nested</th><th class="r">Avg score</th></tr></thead>
+        <tbody id="cattable"></tbody>
+      </table>
+      </div>
+    </div>
+    <p class="from" style="margin:8px 2px 0;color:var(--faint);">Cleanest content: Detail Items (93), Ceiling Devices (90), Furniture (87), Electrical (86). Unit assemblies (Kitchen/Bathroom) are the largest &amp; most complex families — expected for full room modules.</p>
+  </section>
+
+  <footer>
+    <span>BBB Design Technology · BIM Content Conformance · Family Efficiency Benchmark v6</span>
+    <span>Cleaned library · 171 families · 21 Jul 2026</span>
+  </footer>
+</div>
+
+<script>
+  const cats = [["Plumbing Fixtures",41,39.9,221,76.4],["Specialty Equipment",23,12.7,102,82.3],["Furniture",21,13.8,91,87.0],["Unit Families",19,118.7,496,57.2],["Casework",12,8.7,58,81.8],["Appliances",10,5.8,43,78.8],["Electrical",10,5.6,49,86.2],["Doors",9,6.5,46,65.6],["Lighting Fixtures",6,4.4,31,79.6],["Detail Items",5,2.1,12,93.3],["Ceiling Devices",4,2.2,25,89.5],["Life Safety",4,4.3,31,67.3],["Sprinkler",4,2.3,20,75.4],["Air Terminals",3,1.6,12,65.0],["Vertical Circulation",1,3.5,11,58.1]];
+  const maxN = Math.max(...cats.map(c=>c[1]));
+  const band = s => s>=80?'s-good':(s>=60?'s-warn':'s-crit');
+  const avgkb = (mb,n)=> mb*1024/n>=1024 ? (mb/n).toFixed(1)+' MB' : Math.round(mb*1024/n)+' KB';
+  document.getElementById('cattable').innerHTML = cats.map(c=>{
+    const [name,n,mb,nested,score]=c;
+    return `<tr>
+      <td><div class="cbar"><span class="cnt num">${n}</span>
+        <div class="track"><span style="width:${Math.round(n/maxN*100)}%"></span></div>
+        <span style="font-size:11.5px;">${name}</span></div></td>
+      <td class="r num">${avgkb(mb,n)}</td>
+      <td class="r num">${nested}</td>
+      <td class="r"><span class="scoretag ${band(score)} num">${score}</span></td></tr>`;
+  }).join('');
+</script>
