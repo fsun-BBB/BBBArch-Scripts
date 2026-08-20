@@ -1,0 +1,17 @@
+title: "Settings"
+tooltip: |
+  What counts as envelope, and the purge.
+
+  - Tick the categories to measure: walls, curtain wall panels and
+    mullions, windows, doors, walls with slab edges, walls with columns.
+  - Limit the run to specific wall / panel / window / door types.
+  - Purge everything this tool has made in the model: the filled
+    regions, their EN_ types, the EN_ schedule, and the EN_ parameters
+    that carry the area values. Your own filled regions are left alone.
+
+  Saved per user and shared by all three buttons, which is why Run Now
+  can measure the open elevation without asking anything.
+
+  Coming soon: merging wall types, and detail groups for repeated
+  type + height/width combinations.
+author: BBB

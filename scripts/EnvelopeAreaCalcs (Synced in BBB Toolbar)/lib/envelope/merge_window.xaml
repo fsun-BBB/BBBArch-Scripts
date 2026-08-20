@@ -1,0 +1,101 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Merge Types"
+        Width="760" Height="600" MinWidth="600" MinHeight="420"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResize" ShowInTaskbar="False"
+        Background="#F3F3F3" FontFamily="Segoe UI">
+  <Window.Resources>
+    <Style x:Key="Hint" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="#666"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+      <Setter Property="Margin" Value="0,4,0,0"/>
+    </Style>
+    <Style TargetType="DataGridColumnHeader">
+      <Setter Property="Background" Value="#F3F3F3"/>
+      <Setter Property="Foreground" Value="#323130"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="8,6"/>
+      <Setter Property="BorderBrush" Value="#E0E0E0"/>
+      <Setter Property="BorderThickness" Value="0,0,0,1"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="White" BorderBrush="#E0E0E0"
+            BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock Text="Merge Types" FontSize="18" FontWeight="SemiBold"
+                   Foreground="#201F1E"/>
+        <TextBlock Style="{StaticResource Hint}"
+                   Text="Select two or more rows and Merge to report them as one row and colour. Select a merged row and Unmerge to take it back out."/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Style="{DynamicResource CardFluent}" Margin="20"
+            Effect="{DynamicResource ElevationLow}" Padding="0">
+      <DataGrid x:Name="grid"
+                AutoGenerateColumns="False"
+                CanUserAddRows="False" CanUserDeleteRows="False"
+                CanUserReorderColumns="False" CanUserResizeRows="False"
+                SelectionMode="Extended" SelectionUnit="FullRow"
+                GridLinesVisibility="Horizontal"
+                HorizontalGridLinesBrush="#EDEDED"
+                HeadersVisibility="Column"
+                RowHeaderWidth="0"
+                IsReadOnly="True"
+                AlternatingRowBackground="#FAFAFA"
+                RowBackground="White"
+                BorderThickness="0"
+                Background="White">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="Revit Category" Binding="{Binding CategoryLabel}" Width="170"/>
+          <DataGridTextColumn Header="Type Name" Binding="{Binding TypeName}" Width="*"/>
+          <DataGridTemplateColumn Header="Merged Type" Width="220">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <StackPanel Orientation="Horizontal" Margin="4,2">
+                  <Border Width="12" Height="12" CornerRadius="2" Margin="0,0,6,0"
+                          Background="{Binding ColorHex}"/>
+                  <TextBlock Text="{Binding GroupName}"/>
+                </StackPanel>
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+    </Border>
+
+    <Border Grid.Row="2" Background="White" BorderBrush="#E0E0E0"
+            BorderThickness="0,1,0,0" Padding="20,14">
+      <Grid>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+          <Button x:Name="btn_unmerge" Content="Unmerge" Padding="16,6"
+                  Style="{DynamicResource ButtonFluentSecondary}"
+                  Click="unmerge"/>
+          <Button x:Name="btn_merge" Content="Merge" Padding="16,6" Margin="8,0,0,0"
+                  Style="{DynamicResource ButtonFluentSecondary}"
+                  Click="merge"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button x:Name="btn_cancel" Content="Cancel" Padding="16,6"
+                  Style="{DynamicResource ButtonFluentGhost}" Foreground="#666"
+                  Click="cancel"/>
+          <Button x:Name="btn_ok" Content="Save" Padding="20,6" Margin="8,0,0,0"
+                  Style="{DynamicResource ButtonFluentPrimary}"
+                  IsDefault="True" Click="confirm"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+  </Grid>
+</Window>

@@ -1,0 +1,13 @@
+title: "Run\nNow"
+tooltip: |
+  Measure the elevation that is currently open.
+
+  Uses the options set in Configurations and asks nothing else, so it is
+  the button for a second and third pass while tuning a view.
+
+  The depth check still appears if the view has no far clip or scope box
+  at all - that case measures the whole depth of the building instead of
+  the facade, so it is worth stopping for.
+
+  Every run ends by refreshing the "EN_Envelope Areas" schedule.
+author: BBB

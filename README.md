@@ -24,6 +24,7 @@ scripts/
 ├── FamilyBenchmark/            # pyRevit (IronPython) — scores .rfa families
 ├── SyncAuditedFamilies/        # PowerShell — Notion → AUDITED folder sync
 ├── CLRCeilingHeights/          # pyRevit pulldown — ceiling clear-height calc + tags
+├── EnvelopeAreaCalcs/          # pyRevit — facade area per element off an elevation
 ├── RenderStudio/               # Node — AI render canvas + LoRA training board
 ├── ImageCompressor/            # Single-file browser image compressor
 └── Frank Tools.extension/      # Full pyRevit extension (dev toolbar), version-controlled
@@ -84,6 +85,7 @@ RUFF is configured in `pyproject.toml`.
 | [Frank Tools.extension](scripts/Frank%20Tools.extension/) | pyRevit extension | Full dev toolbar (FamilyBenchmark, FamilyOptimizer, GeoReducer, ParamAudit, PurgeUnused, CeilingHeights) plus pyRevit starter-kit boilerplate. Load via a pyRevit Custom Extension Directory. |
 | [RenderStudio](scripts/RenderStudio/) | Node / vanilla JS | Node-graph canvas for AI rendering plus a LoRA training board. Wraps fal.ai, Replicate and Gemini behind one UI; guards the parameter ranges and blocks training runs on datasets that cannot succeed. |
 | [ImageCompressor](scripts/ImageCompressor/) | HTML (single file) | Batch image compressor that runs entirely in the browser — no network calls, no dependencies. Three presets or a target file size, ZIP download. |
+| [EnvelopeAreaCalcs](scripts/EnvelopeAreaCalcs%20(Synced%20in%20BBB%20Toolbar)/) | pyRevit / Python | Measures facade area per element off a Revit elevation — front-tier culling, one filled region per piece, net wall areas, roof trim, schedulable parameters and window-to-wall ratio. Snapshot of the production tool in `BBB-pyRevit-Toolbar`. |
 
 > **pyRevit note:** scripts that run inside Revit target pyRevit's embedded IronPython
 > environment. External packages are hard to install there — keep dependencies minimal and

@@ -1,0 +1,6 @@
+title: Energy
+
+layout:
+  - RunNow[title:Run Now]
+  - SelectElevations[title:Select Elevations]
+  - Configurations[title:Configurations]

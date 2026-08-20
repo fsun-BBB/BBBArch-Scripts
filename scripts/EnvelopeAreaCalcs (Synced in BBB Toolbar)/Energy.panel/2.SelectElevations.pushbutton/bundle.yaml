@@ -1,0 +1,14 @@
+title: "Select\nElevations"
+tooltip: |
+  Pick the elevations to measure from a list, then run the full pass:
+
+  1. Pick the elevation view(s).
+  2. Confirm what counts as envelope for this run.
+  3. Depth check - compare each view's clip distance with where its
+     facade starts, and set the clip from here if it is wrong.
+  4. Draw a coloured filled region per piece and report the areas.
+  5. Refresh the "EN_Envelope Areas" schedule.
+
+  Use Run Now instead to re-run the elevation already open without any
+  of the questions.
+author: BBB
