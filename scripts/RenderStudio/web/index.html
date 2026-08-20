@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BBB Render Studio</title>
+    <link rel="stylesheet" href="css/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark"></span>
+        <span class="name">BBB Render Studio</span>
+      </div>
+
+      <nav class="tabs" id="tabs">
+        <button class="tab is-active" data-view="canvas">Canvas</button>
+        <button class="tab" data-view="training">Model Training</button>
+        <button class="tab" data-view="library">LoRA Library</button>
+      </nav>
+
+      <div class="topbar-right">
+        <div class="meter" id="cost-meter" title="Estimated spend this session">
+          <span class="meter-label">session</span>
+          <span class="meter-value" id="cost-value">$0.00</span>
+        </div>
+        <div class="pill" id="provider-pill">checking…</div>
+        <button class="btn btn-ghost" id="btn-save">Save board</button>
+        <button class="btn btn-primary" id="btn-run-all">Run board</button>
+      </div>
+    </header>
+
+    <main id="views">
+      <!-- ------------------------------------------------------- CANVAS -->
+      <section class="view is-active" data-view="canvas">
+        <aside class="palette" id="palette">
+          <div class="palette-head">
+            <h2>Nodes</h2>
+            <p>Click to drop on the canvas.</p>
+          </div>
+          <div id="palette-groups"></div>
+
+          <div class="palette-head" style="margin-top: 18px">
+            <h2>Recipes</h2>
+            <p>Pre-wired graphs for the three input types.</p>
+          </div>
+          <div class="recipe-list" id="recipe-list"></div>
+        </aside>
+
+        <div class="stage" id="stage">
+          <div class="viewport" id="viewport">
+            <svg class="wires" id="wires"><g id="wire-group"></g></svg>
+            <div class="world" id="world"></div>
+          </div>
+          <div class="stage-hud">
+            <button class="hud-btn" id="btn-fit" title="Fit to content">Fit</button>
+            <button class="hud-btn" id="btn-zoom-out">−</button>
+            <span class="hud-zoom" id="zoom-label">100%</span>
+            <button class="hud-btn" id="btn-zoom-in">+</button>
+          </div>
+          <div class="empty-hint" id="empty-hint">
+            <strong>Empty board.</strong> Pick a recipe on the left to start from a working graph.
+          </div>
+        </div>
+
+        <aside class="inspector" id="inspector">
+          <div class="inspector-empty">Select a node to edit its settings.</div>
+        </aside>
+      </section>
+
+      <!-- ----------------------------------------------------- TRAINING -->
+      <section class="view" data-view="training">
+        <div class="training" id="training"></div>
+      </section>
+
+      <!-- ------------------------------------------------------ LIBRARY -->
+      <section class="view" data-view="library">
+        <div class="library" id="library"></div>
+      </section>
+    </main>
+
+    <div class="toasts" id="toasts"></div>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
