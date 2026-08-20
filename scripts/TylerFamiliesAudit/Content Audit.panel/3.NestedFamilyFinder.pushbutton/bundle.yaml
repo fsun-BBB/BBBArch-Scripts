@@ -1,0 +1,29 @@
+title: "Nested Family\nFinder"
+tooltip: |
+  For Tyler's Families Audit.
+
+  Run this and browse to the family/families you want to scan in the file
+  picker - they do NOT need to be already open or loaded into the current
+  model; any .rfa on disk can be picked. For each one, it scans for nested
+  families, however deep the nesting goes, and:
+
+  - Saves every nested family found into
+    0_HOLDING_TYLER\<Revit Category>\<Family Name>.rfa (no renaming,
+    overwrites by default). The family/families you picked are NOT
+    copied/moved - each is registered using its own existing file path.
+  - Records one row per family (each picked family plus every nested one).
+    If the opened family is D, and D nests E, and E nests F: E's Child
+    Family is F and D's Child Family is E - D does NOT get F listed as a
+    child (only the immediate, one-level relationship is recorded on each
+    row). Parent Family works the same way in reverse.
+  - The same nested family can belong to more than one parent (e.g. a
+    shared hardware family reused by two different door families) - that's
+    expected and both parents get recorded.
+  - Window 1: confirms what was exported to 0_HOLDING_TYLER.
+  - Window 2: asks whether to import everything found into the "Revit
+    Families Audit" Notion database now. Updates merge with (not
+    overwrite) whatever relationships are already on an existing row.
+
+  Any file this tool opens itself gets closed again when it's done -
+  anything you already had open is left exactly as you had it.
+author: BBB

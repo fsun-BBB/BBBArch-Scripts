@@ -25,6 +25,7 @@ scripts/
 ├── SyncAuditedFamilies/        # PowerShell — Notion → AUDITED folder sync
 ├── CLRCeilingHeights/          # pyRevit pulldown — ceiling clear-height calc + tags
 ├── EnvelopeAreaCalcs/          # pyRevit — facade area per element off an elevation
+├── TylerFamiliesAudit/         # pyRevit — family extraction + nested-family audit → Notion
 ├── RenderStudio/               # Node — AI render canvas + LoRA training board
 ├── ImageCompressor/            # Single-file browser image compressor
 └── Frank Tools.extension/      # Full pyRevit extension (dev toolbar), version-controlled
@@ -86,6 +87,7 @@ RUFF is configured in `pyproject.toml`.
 | [RenderStudio](scripts/RenderStudio/) | Node / vanilla JS | Node-graph canvas for AI rendering plus a LoRA training board. Wraps fal.ai, Replicate and Gemini behind one UI; guards the parameter ranges and blocks training runs on datasets that cannot succeed. |
 | [ImageCompressor](scripts/ImageCompressor/) | HTML (single file) | Batch image compressor that runs entirely in the browser — no network calls, no dependencies. Three presets or a target file size, ZIP download. |
 | [EnvelopeAreaCalcs](scripts/EnvelopeAreaCalcs%20(Synced%20in%20BBB%20Toolbar)/) | pyRevit / Python | Measures facade area per element off a Revit elevation — front-tier culling, one filled region per piece, net wall areas, roof trim, schedulable parameters and window-to-wall ratio. Snapshot of the production tool in `BBB-pyRevit-Toolbar`. |
+| [TylerFamiliesAudit](scripts/TylerFamiliesAudit/) | pyRevit / Python | Extracts Revit families and their nested families out of legends or off disk into the audit holding folder, walks the nesting tree to full depth, and syncs the results into the Notion audit databases. Snapshot of `Frank Tools > Content Audit` in `BBB-pyRevit-Toolbar`. |
 
 > **pyRevit note:** scripts that run inside Revit target pyRevit's embedded IronPython
 > environment. External packages are hard to install there — keep dependencies minimal and

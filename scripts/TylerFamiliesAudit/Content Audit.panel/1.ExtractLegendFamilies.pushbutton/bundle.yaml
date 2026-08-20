@@ -1,0 +1,16 @@
+title: "Extract\nLegend Families"
+tooltip: |
+  For Tyler's Families Audit.
+
+  1. Box-select everything you want to extract, click Finish.
+  2. Choose the root folder to save into (a standard Windows folder
+     browser - cancel to fall back to 0_HOLDING_TYLER, the default).
+  3. Every unique family in the selection is saved as a standalone .rfa
+     into <root>\<Revit Category>\ (overwrites by default).
+  4. Prompts: also extract nested families found inside those families?
+     (recurses through every level of nesting - each nested family gets
+     its own row/file, Parent Family always recording just its immediate
+     host, Child Family listing its own direct nested families.)
+  5. Prompts: import everything just extracted into the "Revit Families
+     Audit" Notion database now?
+author: BBB

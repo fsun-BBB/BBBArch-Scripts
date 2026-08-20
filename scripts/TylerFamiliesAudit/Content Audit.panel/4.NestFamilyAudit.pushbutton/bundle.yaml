@@ -1,0 +1,28 @@
+title: "Nest Family\nAudit"
+tooltip: |
+  Nested family audit for the Kitchen Nested Family Audit in Notion.
+
+  Run this and browse to the family/families you want to audit in the file
+  picker (e.g. multi-select all the Unit Families) - they do NOT need to be
+  open or loaded into the current model; any .rfa on disk can be picked.
+
+  For each one it walks the nested-family tree, however deep it goes
+  (A -> B -> C -> D ...), and produces one flat row per family - every
+  parent, every nested family, all in a single list. Each row records:
+
+  - Family Name (the family's ORIGINAL name)
+  - Revit Category (multi-select), File Size (MB), File Location
+  - Parent Family / Child Families (multi-select) - the IMMEDIATE
+    (one-level) relationship only. If A nests B and B nests C, then B's
+    parent is A and B's child is C; A never lists C.
+  - Status - set to "Guardian Passed" on new rows; existing rows are left
+    alone so a manual change survives.
+
+  Proposed Name is never written - it's a human/reference field.
+
+  Then it offers to import everything into the Kitchen Nested Family Audit
+  Notion database. Parent/Child multi-selects MERGE with (not overwrite)
+  what's already on a row. Every nested family found is also saved into
+  0_HOLDING_TYLER\<Revit Category>\<Family Name>.rfa (overwrites by
+  default); the families you picked are registered at their own paths.
+author: BBB

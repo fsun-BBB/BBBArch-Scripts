@@ -1,0 +1,22 @@
+title: "Import to\nNotion"
+tooltip: |
+  For Tyler's Families Audit.
+
+  Standalone re-import: "Extract Legend Families" already offers to do
+  this itself right after extracting. Use this button if you skipped that
+  prompt, the import failed partway, or you want to re-push the same
+  manifest again.
+
+  Reads 0_HOLDING_TYLER\_tyler_audit_manifest.json and upserts one row per
+  family into the "Revit Families Audit" Notion database:
+
+  - Family Name (title)
+  - Category (select) - Revit category
+  - Type (multi-select) - every type of that family involved
+  - Parent Family - immediate host family, or N/A
+  - Child Family - direct nested families, or N/A
+  - File Size (number, KB)
+
+  Matches existing rows by Family Name and updates them instead of
+  creating duplicates.
+author: BBB
