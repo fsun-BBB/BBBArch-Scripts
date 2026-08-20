@@ -24,6 +24,8 @@ scripts/
 ├── FamilyBenchmark/            # pyRevit (IronPython) — scores .rfa families
 ├── SyncAuditedFamilies/        # PowerShell — Notion → AUDITED folder sync
 ├── CLRCeilingHeights/          # pyRevit pulldown — ceiling clear-height calc + tags
+├── RenderStudio/               # Node — AI render canvas + LoRA training board
+├── ImageCompressor/            # Single-file browser image compressor
 └── Frank Tools.extension/      # Full pyRevit extension (dev toolbar), version-controlled
 ```
 
@@ -80,6 +82,8 @@ RUFF is configured in `pyproject.toml`.
 | [SyncAuditedFamilies](scripts/SyncAuditedFamilies/) | PowerShell | Queries the Notion Revit Families database for a given Review Status (default `Cleaned`) and copies each source `.rfa` to the AUDITED folder, renaming to the Proposed Name and writing the destination path back to Notion. |
 | [CLRCeilingHeights](scripts/CLRCeilingHeights/) | pyRevit / Python | Ceiling clear-height (ceiling-to-floor) calculator and tagger, plus clearance check and config. Snapshot of the production tool in `BBB-pyRevit-Toolbar`. |
 | [Frank Tools.extension](scripts/Frank%20Tools.extension/) | pyRevit extension | Full dev toolbar (FamilyBenchmark, FamilyOptimizer, GeoReducer, ParamAudit, PurgeUnused, CeilingHeights) plus pyRevit starter-kit boilerplate. Load via a pyRevit Custom Extension Directory. |
+| [RenderStudio](scripts/RenderStudio/) | Node / vanilla JS | Node-graph canvas for AI rendering plus a LoRA training board. Wraps fal.ai, Replicate and Gemini behind one UI; guards the parameter ranges and blocks training runs on datasets that cannot succeed. |
+| [ImageCompressor](scripts/ImageCompressor/) | HTML (single file) | Batch image compressor that runs entirely in the browser — no network calls, no dependencies. Three presets or a target file size, ZIP download. |
 
 > **pyRevit note:** scripts that run inside Revit target pyRevit's embedded IronPython
 > environment. External packages are hard to install there — keep dependencies minimal and
